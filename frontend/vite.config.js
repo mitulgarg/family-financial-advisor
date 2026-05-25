@@ -6,8 +6,12 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
     port: 5173,
+    // '/api/*' proxied with path kept intact (backend serves /api/members etc.)
+    // '/chat' and '/session' pass through as-is (Day 1 backend paths, no rewrite)
     proxy: {
-      '/api': 'http://localhost:8000',
+      '/api': { target: 'http://localhost:8000', changeOrigin: true },
+      '/chat': { target: 'http://localhost:8000', changeOrigin: true },
+      '/session': { target: 'http://localhost:8000', changeOrigin: true },
     },
   },
 })

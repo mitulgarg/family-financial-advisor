@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 from dataclasses import dataclass
 from typing import AsyncIterator, Protocol
 
@@ -41,6 +42,9 @@ class StreamEnd:
     output_tokens: int
     cache_read_tokens: int
     cache_write_tokens: int
+    model: str = ""
+    latency_ms: float = 0.0
+    cost_usd: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -65,6 +69,21 @@ class LLMProvider(Protocol):
         max_tokens: int = 2048,
         model: str | None = None,
     ) -> AsyncIterator[StreamEvent]: ...
+
+
+# (input_$/M_tokens, output_$/M_tokens) — approximate public pricing
+_PRICING: dict[str, tuple[float, float]] = {
+    "claude-haiku-4-5": (0.80, 4.00),
+    "claude-sonnet-4-6": (3.00, 15.00),
+    "claude-opus-4-7": (15.00, 75.00),
+}
+
+
+def _compute_cost(model: str, input_tokens: int, output_tokens: int) -> float:
+    for prefix, (in_rate, out_rate) in _PRICING.items():
+        if model.startswith(prefix):
+            return round((input_tokens * in_rate + output_tokens * out_rate) / 1_000_000, 6)
+    return 0.0
 
 
 def _render_system(blocks: list[SystemBlock]) -> list[dict]:
@@ -113,6 +132,7 @@ class AnthropicProvider:
         if tools:
             kwargs["tools"] = tools
 
+        t0 = time.monotonic()
         try:
             async with self._client.messages.stream(**kwargs) as stream:
                 async for event in stream:
@@ -170,6 +190,9 @@ class AnthropicProvider:
                 output_tokens=output_tokens,
                 cache_read_tokens=cache_read_tokens,
                 cache_write_tokens=cache_write_tokens,
+                model=chosen_model,
+                latency_ms=round((time.monotonic() - t0) * 1000, 1),
+                cost_usd=_compute_cost(chosen_model, input_tokens, output_tokens),
             )
 
         except anthropic.APIError as e:
@@ -208,9 +231,10 @@ async def _smoke() -> None:
             print(f"\n[tool_use {event.name} input={event.input}]")
         elif isinstance(event, StreamEnd):
             print(
-                f"\n[done stop={event.stop_reason} "
+                f"\n[done model={event.model} stop={event.stop_reason} "
                 f"in={event.input_tokens} out={event.output_tokens} "
-                f"cache_r={event.cache_read_tokens} cache_w={event.cache_write_tokens}]"
+                f"cache_r={event.cache_read_tokens} cache_w={event.cache_write_tokens} "
+                f"latency={event.latency_ms:.0f}ms cost=${event.cost_usd:.6f}]"
             )
         elif isinstance(event, StreamError):
             print(f"\n[ERROR {event.code}] {event.message}")

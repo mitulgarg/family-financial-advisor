@@ -1,0 +1,75 @@
+"""
+Transcript persistence — single chokepoint for JSONL turn append.
+
+The TranscriptRecord schema is FROZEN at end of Day 2:
+  - `intent` defaults to "unknown" until Day 3 classifier populates it.
+  - `tool_calls` defaults to () until Day 4 tool loop populates it.
+
+Only this module may call `markdown_io.append_jsonl` (greppable invariant).
+"""
+from __future__ import annotations
+
+import dataclasses
+import json
+import logging
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
+
+from backend.config import settings
+from backend.utils.markdown_io import append_jsonl
+
+logger = logging.getLogger(__name__)
+
+# POSIX PIPE_BUF; lines above this risk interleaved writes under concurrency.
+_MAX_LINE_BYTES = 4096
+
+
+@dataclass(frozen=True)
+class TranscriptRecord:
+    ts: str
+    member: str
+    session_id: str
+    turn_id: str
+    user_msg: str
+    assistant_msg: str
+    tool_calls: tuple[dict, ...] = ()
+    intent: str = "unknown"
+
+
+def now_iso() -> str:
+    now = datetime.now(timezone.utc)
+    return now.strftime("%Y-%m-%dT%H:%M:%S.") + f"{now.microsecond // 1000:03d}Z"
+
+
+def transcript_path(member: str, session_id: str) -> Path:
+    return settings.resolve(settings.sessions_dir) / member / f"{session_id}.jsonl"
+
+
+def turn_id_for(history_len: int) -> str:
+    return f"t{history_len // 2 + 1:02d}"
+
+
+def append_turn(record: TranscriptRecord) -> None:
+    """Append one JSONL line. Errors are logged and swallowed."""
+    try:
+        as_dict = dataclasses.asdict(record)
+        as_dict["tool_calls"] = list(record.tool_calls)
+        line_bytes = len(json.dumps(as_dict, ensure_ascii=False).encode("utf-8"))
+        if line_bytes > _MAX_LINE_BYTES:
+            logger.warning(
+                "transcript line %d > %d bytes: %s/%s/%s",
+                line_bytes,
+                _MAX_LINE_BYTES,
+                record.member,
+                record.session_id,
+                record.turn_id,
+            )
+        append_jsonl(transcript_path(record.member, record.session_id), as_dict)
+    except Exception:
+        logger.exception(
+            "transcript append failed: %s/%s/%s",
+            record.member,
+            record.session_id,
+            record.turn_id,
+        )

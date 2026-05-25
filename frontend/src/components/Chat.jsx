@@ -1,0 +1,181 @@
+import { useRef, useEffect, useState } from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import { useChatStore } from '../store/chatStore'
+import { useChat } from '../hooks/useChat'
+
+function SendArrow() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path
+        d="M8 13V3M8 3L3.5 7.5M8 3L12.5 7.5"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+function TypingDots() {
+  return (
+    <span className="inline-flex items-end gap-1 py-1.5">
+      <span className="typing-dot" />
+      <span className="typing-dot" />
+      <span className="typing-dot" />
+    </span>
+  )
+}
+
+function bubbleRadius(role, isFirstInGroup, isLastInGroup) {
+  const base = 'rounded-[22px]'
+  if (role === 'user') {
+    return `${base} ${isLastInGroup ? 'rounded-br-md' : ''}`.trim()
+  }
+  return `${base} ${isLastInGroup ? 'rounded-bl-md' : ''}`.trim()
+}
+
+export function Chat() {
+  const messages = useChatStore((s) => s.messages)
+  const streaming = useChatStore((s) => s.streaming)
+  const error = useChatStore((s) => s.error)
+  const setError = useChatStore((s) => s.setError)
+  const { send } = useChat()
+  const [text, setText] = useState('')
+  const containerRef = useRef(null)
+  const textareaRef = useRef(null)
+
+  useEffect(() => {
+    const el = containerRef.current
+    if (el) el.scrollTop = el.scrollHeight
+  }, [messages])
+
+  useEffect(() => {
+    const ta = textareaRef.current
+    if (!ta) return
+    ta.style.height = 'auto'
+    ta.style.height = `${Math.min(ta.scrollHeight, 120)}px`
+  }, [text])
+
+  function handleSubmit() {
+    const trimmed = text.trim()
+    if (!trimmed || streaming) return
+    setText('')
+    send(trimmed)
+  }
+
+  function handleKeyDown(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      handleSubmit()
+    }
+  }
+
+  const canSend = text.trim().length > 0 && !streaming
+
+  return (
+    <div className="flex flex-col h-full">
+      <div
+        ref={containerRef}
+        className="flex-1 overflow-y-auto px-4 py-6"
+      >
+        {messages.length === 0 && (
+          <p className="text-center text-[var(--color-ink-muted)] text-sm mt-12 animate-fade-in">
+            Start the conversation below.
+          </p>
+        )}
+
+        {messages.map((msg, i) => {
+          const prev = messages[i - 1]
+          const next = messages[i + 1]
+          const isFirstInGroup = !prev || prev.role !== msg.role
+          const isLastInGroup = !next || next.role !== msg.role
+          const isUser = msg.role === 'user'
+          const isEmptyAssistant =
+            !isUser && msg.content.length === 0 && streaming
+          const groupGap = isFirstInGroup ? 'mt-2.5' : 'mt-0.5'
+
+          return (
+            <div
+              key={msg.id}
+              className={`flex ${isUser ? 'justify-end' : 'justify-start'} ${groupGap}`}
+            >
+              <div
+                className={[
+                  'max-w-[78%] px-3.5 py-2 text-[15px] leading-[1.35]',
+                  bubbleRadius(msg.role, isFirstInGroup, isLastInGroup),
+                  isUser
+                    ? 'bg-[var(--color-imessage-blue)] text-white origin-bottom-right animate-bubble-in-right'
+                    : 'bg-[var(--color-bubble-other)] text-[var(--color-ink)] origin-bottom-left animate-bubble-in-left',
+                ].join(' ')}
+                style={{ willChange: 'transform, opacity' }}
+              >
+                {isEmptyAssistant ? (
+                  <TypingDots />
+                ) : isUser ? (
+                  <p className="whitespace-pre-wrap break-words">{msg.content}</p>
+                ) : (
+                  <div className="prose prose-sm max-w-none prose-p:my-1 prose-p:leading-snug prose-ul:my-1 prose-ol:my-1 prose-pre:my-2">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {msg.content}
+                    </ReactMarkdown>
+                  </div>
+                )}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      <div className="px-3 pb-4 pt-2">
+        {error && (
+          <div className="mb-2 flex items-center justify-between rounded-2xl bg-red-900/30 border border-red-500/30 px-3.5 py-2 text-sm text-red-300 animate-fade-in">
+            <span>{error}</span>
+            <button
+              onClick={() => setError(null)}
+              className="ml-3 text-red-400 hover:text-red-200"
+              aria-label="Dismiss error"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+        <div className="flex items-end gap-2">
+          <div className="flex-1 flex items-end rounded-3xl bg-[var(--color-surface)] border border-[var(--color-border)] pl-4 pr-1.5 py-1.5 focus-within:border-[var(--color-ink-muted)] transition-colors">
+            <textarea
+              ref={textareaRef}
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Message"
+              disabled={streaming && messages.length === 0}
+              rows={1}
+              className="flex-1 resize-none bg-transparent outline-none text-[15px] leading-[1.35] py-1.5 placeholder:text-[var(--color-ink-muted)] max-h-[120px] text-[var(--color-ink)]"
+            />
+            <button
+              onClick={handleSubmit}
+              disabled={!canSend}
+              aria-label="Send"
+              className={[
+                'press-shrink shrink-0 ml-1 mb-0.5 grid place-items-center h-7 w-7 rounded-full',
+                canSend
+                  ? 'bg-[var(--color-imessage-blue)] text-white hover:bg-[var(--color-imessage-blue-press)]'
+                  : 'bg-white/10 text-white/30 cursor-not-allowed',
+                'transition-colors duration-150',
+              ].join(' ')}
+            >
+              <SendArrow />
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}

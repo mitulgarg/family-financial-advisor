@@ -1,10 +1,91 @@
 @import "tailwindcss";
 
+@theme {
+  --color-bg: oklch(11% 0.008 260);
+  --color-surface: oklch(18% 0.008 260);
+  --color-ink: oklch(96% 0.005 250);
+  --color-ink-muted: oklch(60% 0.01 255);
+  --color-imessage-blue: oklch(63% 0.19 254);
+  --color-imessage-blue-press: oklch(58% 0.19 254);
+  --color-bubble-other: oklch(22% 0.008 260);
+  --color-border: oklch(26% 0.008 260);
+
+  --ease-out-quart: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-out-expo: cubic-bezier(0.19, 1, 0.22, 1);
+
+  --animate-bubble-in-right: bubble-in-right 240ms var(--ease-out-quart) backwards;
+  --animate-bubble-in-left: bubble-in-left 240ms var(--ease-out-quart) backwards;
+  --animate-fade-in: fade-in 180ms var(--ease-out-quart) backwards;
+}
+
 body {
   margin: 0;
-  font-family: system-ui, 'Segoe UI', Roboto, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI",
+    Roboto, sans-serif;
+  background: var(--color-bg);
+  color: var(--color-ink);
+  -webkit-font-smoothing: antialiased;
 }
 
 #root {
   min-height: 100vh;
+}
+
+@keyframes bubble-in-right {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes bubble-in-left {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes typing-bounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.35; }
+  30%           { transform: translateY(-3px); opacity: 1; }
+}
+
+.typing-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background: oklch(62% 0.01 260);
+  animation: typing-bounce 1.1s infinite ease-out;
+}
+.typing-dot:nth-child(2) { animation-delay: 0.15s; }
+.typing-dot:nth-child(3) { animation-delay: 0.30s; }
+
+.press-shrink {
+  transition: transform 120ms var(--ease-out-quart);
+}
+.press-shrink:active:not(:disabled) {
+  transform: scale(0.92);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-bubble-in-right,
+  .animate-bubble-in-left,
+  .animate-fade-in,
+  .typing-dot {
+    animation: none;
+  }
 }
