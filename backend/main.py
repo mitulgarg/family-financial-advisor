@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from typing import AsyncIterator
 
 from fastapi import FastAPI, Header, HTTPException, Response
@@ -66,7 +67,7 @@ def list_members() -> dict:
 @app.get("/api/history")
 def history(x_member_id: str = Header(..., alias="X-Member-Id")) -> dict:
     _assert_member_exists(x_member_id)
-    active_sid = sessions.get_active(x_member_id)
+    active_sid = sessions.get_active(x_member_id, time.monotonic())
     if active_sid is None:
         return {"session_id": None, "messages": []}
     return {

@@ -50,28 +50,38 @@ export function useChat() {
   const activeMember = useChatStore((s) => s.activeMember)
 
   // Hydrate chat from backend whenever the active member changes (mount or
-  // switch). Uses an AbortController so a fast switch (vedant → father)
-  // doesn't let the vedant response land after the father one.
+  // switch). The setTimeout(0) defers the fetch by one tick so that React's
+  // Strict Mode mount/unmount/remount cycle in dev can cancel the scheduled
+  // fetch before it ever fires (otherwise every mount produces a "(cancelled)"
+  // history request in the network tab). AbortController still handles the
+  // legitimate case of switching members mid-flight.
   useEffect(() => {
     if (!activeMember) return
-    const controller = new AbortController()
-    fetch(ENDPOINTS.history, {
-      headers: { 'X-Member-Id': activeMember },
-      signal: controller.signal,
-    })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (!data) return
-        useChatStore.getState().hydrateFromHistory(data.session_id, data.messages)
+    let cancelled = false
+    let controller = null
+    const timer = setTimeout(() => {
+      if (cancelled) return
+      controller = new AbortController()
+      fetch(ENDPOINTS.history, {
+        headers: { 'X-Member-Id': activeMember },
+        signal: controller.signal,
       })
-      .catch((err) => {
-        if (err?.name !== 'AbortError') {
-          // Network failure on hydration shouldn't break the page — user can
-          // still send fresh messages. Surface silently.
-          console.warn('history hydration failed:', err)
-        }
-      })
-    return () => controller.abort()
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) => {
+          if (!data || cancelled) return
+          useChatStore.getState().hydrateFromHistory(data.session_id, data.messages)
+        })
+        .catch((err) => {
+          if (err?.name !== 'AbortError') {
+            console.warn('history hydration failed:', err)
+          }
+        })
+    }, 0)
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+      if (controller) controller.abort()
+    }
   }, [activeMember])
 
   const send = useCallback(async (text) => {

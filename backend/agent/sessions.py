@@ -61,12 +61,20 @@ def resolve_session(member: str, now: float) -> tuple[str, bool]:
     return new_sid, True
 
 
-def get_active(member: str) -> str | None:
-    """Return the active session_id for `member`, or None if none is active.
+def get_active(member: str, now: float) -> str | None:
+    """Return the active session_id for `member`, or None if none/stale.
 
-    Does not check staleness — callers that care should pair this with
-    `is_stale` against `_activity`. Read-only accessor for `/history`."""
-    return _active.get(member)
+    If the active session is past the staleness threshold, evict it before
+    returning None so subsequent `resolve_session` calls don't have to
+    re-detect and clean up. Keeps `/api/history` and `/chat` in lockstep."""
+    sid = _active.get(member)
+    if sid is None:
+        return None
+    last_ts = _activity.get((member, sid))
+    if last_ts is None or is_stale(last_ts, now):
+        _clear_member(member)
+        return None
+    return sid
 
 
 def touch(member: str, session_id: str, now: float) -> None:
