@@ -202,7 +202,41 @@ What's deliberately *not* in the stack: no database (markdown scans are fast at 
 
 ## Installation
 
-> Setup instructions land here once the MVP stabilises (Day 5). For now the project is in active development; see `MVP_BUILD_PLAN.md` to follow along.
+The whole stack (backend + frontend) runs in Docker, so the only prerequisite is **Docker Desktop** (or Docker Engine + Compose v2).
+
+```bash
+# 1. Clone, then add your Anthropic key
+cp .env.example .env
+#    edit .env and set ANTHROPIC_API_KEY=sk-ant-...
+
+# 2. Build and run both services
+docker compose up --build
+
+# 3. Open the app
+#    frontend → http://localhost:5173
+#    backend  → http://localhost:8000  (health: /health)
+```
+
+That's it. Stop with `Ctrl+C`, or run detached with `docker compose up -d` and stop with `docker compose down`.
+
+**What you get:**
+
+- **Hot reload.** Source is bind-mounted — edit a `.py` in `backend/` or a `.jsx` in `frontend/src/` and the change reloads live, no rebuild needed.
+- **Readable data on disk.** `memory/`, `sessions/`, and `skills/` are mounted from the host, so the markdown files the advisor reads and writes stay on your machine and open in any editor.
+- **Your key stays out of the image.** `ANTHROPIC_API_KEY` is injected at runtime from `.env`; it is never baked into a built image, and `.env` is gitignored.
+
+**Notes for contributors:**
+
+- If you're already running a local Vite (`:5173`) or backend (`:8000`) outside Docker, those ports will be taken. Stop the local servers, or remap the host ports — e.g. create a `docker-compose.override.yml`:
+  ```yaml
+  services:
+    backend:
+      ports: !override ["8001:8000"]
+    frontend:
+      ports: !override ["5174:5173"]
+  ```
+- After changing `requirements.txt` or `frontend/package.json`, rebuild with `docker compose up --build` so the dependency layer is refreshed.
+- Prefer running without Docker? You can still `pip install -r requirements.txt` + `uvicorn backend.main:app --reload` and `cd frontend && npm install && npm run dev` — the Vite proxy defaults to `http://localhost:8000`.
 
 ---
 

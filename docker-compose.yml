@@ -1,0 +1,46 @@
+# Dev stack: backend (uvicorn --reload) + frontend (Vite dev server).
+# Both bind-mount source for live reload. Data dirs (memory/, sessions/) are
+# mounted from the host so they persist and stay readable in any text editor.
+#
+#   1. cp .env.example .env   (then add your ANTHROPIC_API_KEY)
+#   2. docker compose up --build
+#   3. open http://localhost:5173
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    ports:
+      - "8000:8000"
+    # Secrets (ANTHROPIC_API_KEY) are injected at runtime, never baked in.
+    env_file:
+      - .env
+    environment:
+      # watchfiles misses bind-mount events on Docker Desktop (macOS/Windows);
+      # polling makes --reload reliable there. Harmless on Linux.
+      - WATCHFILES_FORCE_POLLING=true
+    volumes:
+      - ./backend:/app/backend
+      - ./memory:/app/memory
+      - ./sessions:/app/sessions
+      - ./skills:/app/skills
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "5173:5173"
+    environment:
+      # The Vite dev server proxies /api, /chat, /session to the backend.
+      # Inside the compose network the backend is reachable as "backend".
+      - VITE_PROXY_TARGET=http://backend:8000
+      # Use polling so HMR detects edits through the bind mount on macOS/Windows.
+      - VITE_USE_POLLING=true
+    volumes:
+      - ./frontend:/app
+      # Anonymous volume keeps the container's Linux-built node_modules,
+      # rather than letting the host's mount shadow it.
+      - /app/node_modules
+    depends_on:
+      - backend
