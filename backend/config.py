@@ -6,14 +6,14 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     anthropic_api_key: str
     llm_provider: str = "anthropic"
-    main_agent_model: str = "claude-haiku-4-5-20251001"
+    main_agent_model: str = "claude-sonnet-4-6"
     classifier_model: str = "claude-haiku-4-5-20251001"
     summarizer_model: str = "claude-haiku-4-5-20251001"
     memory_dir: Path = Path("memory")
     skills_dir: Path = Path("skills")
     sessions_dir: Path = Path("sessions")
     max_response_tokens: int = 2048
-    enable_cache: bool = True
+    enable_cache: bool = False
     cors_origins: list[str] = ["http://localhost:5173"]
     project_root: Path = Path(__file__).resolve().parent.parent
 

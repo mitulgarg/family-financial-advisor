@@ -48,6 +48,10 @@ Thumbs.db
 .vscode/
 *.swp
 
+# ── Dev / debug scripts (not part of the app) ─────────────────────────────────
+*_smoke.py
+hypothesis_test.py
+
 # ── Tooling ───────────────────────────────────────────────────────────────────
 .agents/
 .claude/
