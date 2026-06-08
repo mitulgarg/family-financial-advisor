@@ -8,6 +8,9 @@ Conventions mirror test_memory_updater.py:
 - `tmp_memory` + `fake_provider` fixtures from conftest.py
 - autouse fixture resets memory_updater._provider
 - local helpers build transcripts with controllable `ts` fields
+
+Post-processing status lives in the transcript (terminal event), not a sibling
+`.closed` marker, so done/not-done is checked via transcripts.is_post_processed.
 """
 from __future__ import annotations
 
@@ -19,8 +22,7 @@ from pathlib import Path
 import pytest
 
 from backend.agent import durability, memory_updater, sessions
-from backend.agent.transcripts import transcript_path
-from backend.config import settings
+from backend.agent.transcripts import is_post_processed, mark_post_processed, transcript_path
 
 
 # ---------------------------------------------------------------------------
@@ -84,7 +86,6 @@ def _now_utc() -> datetime:
 # ---------------------------------------------------------------------------
 
 async def test_last_message_ts_returns_last_line(tmp_memory):
-    now = _now_utc()
     ts_str = "2024-03-15T10:30:00.000Z"
     _write_transcript("vedant", "s1", ts=ts_str, extra_lines=3)
 
@@ -131,7 +132,7 @@ async def test_last_message_ts_missing_ts_field(tmp_memory):
 
 
 # ---------------------------------------------------------------------------
-# 3. Crash case: stale transcript, no .closed marker → summarized exactly once
+# 3. Crash case: stale transcript, not processed → summarized exactly once
 # ---------------------------------------------------------------------------
 
 async def test_stale_unclosed_session_is_summarized(tmp_memory, fake_provider):
@@ -148,8 +149,7 @@ async def test_stale_unclosed_session_is_summarized(tmp_memory, fake_provider):
     assert fake_provider.calls == 1
     conv = (tmp_memory / "members" / "vedant" / "conversations.md").read_text()
     assert "stale" in conv
-    marker = settings.resolve(settings.sessions_dir) / "vedant" / "sess_stale.closed"
-    assert marker.exists()
+    assert is_post_processed("vedant", "sess_stale")
 
 
 # ---------------------------------------------------------------------------
@@ -168,12 +168,10 @@ async def test_stale_closed_fresh_untouched(tmp_memory, fake_provider):
 
     assert count == 1
     assert fake_provider.calls == 1
-    # stale: closed
-    marker_old = settings.resolve(settings.sessions_dir) / "vedant" / "sess_old.closed"
-    assert marker_old.exists()
-    # fresh: no marker
-    marker_new = settings.resolve(settings.sessions_dir) / "vedant" / "sess_new.closed"
-    assert not marker_new.exists()
+    # stale: processed
+    assert is_post_processed("vedant", "sess_old")
+    # fresh: untouched
+    assert not is_post_processed("vedant", "sess_new")
 
 
 # ---------------------------------------------------------------------------
@@ -193,8 +191,8 @@ async def test_scan_covers_multiple_members(tmp_memory, fake_provider):
 
     assert count == 2
     assert fake_provider.calls == 2
-    assert (settings.resolve(settings.sessions_dir) / "vedant" / "sv1.closed").exists()
-    assert (settings.resolve(settings.sessions_dir) / "mom" / "sm1.closed").exists()
+    assert is_post_processed("vedant", "sv1")
+    assert is_post_processed("mom", "sm1")
 
 
 # ---------------------------------------------------------------------------
@@ -211,12 +209,12 @@ async def test_scan_idempotent(tmp_memory, fake_provider):
     await durability.scan_and_close_stale(now)
     count2 = await durability.scan_and_close_stale(now)
 
-    assert count2 == 0  # second run: marker present, nothing to do
+    assert count2 == 0  # second run: already processed, nothing to do
     assert fake_provider.calls == 1  # provider called exactly once total
 
 
 # ---------------------------------------------------------------------------
-# 7. Already-closed transcript → scan skips it
+# 7. Already-processed transcript → scan skips it
 # ---------------------------------------------------------------------------
 
 async def test_already_closed_skipped(tmp_memory, fake_provider):
@@ -224,10 +222,8 @@ async def test_already_closed_skipped(tmp_memory, fake_provider):
 
     now = _now_utc()
     _write_transcript("vedant", "sess_pre", ts=_stale_ts(now))
-    # Pre-place the marker
-    marker = settings.resolve(settings.sessions_dir) / "vedant" / "sess_pre.closed"
-    marker.parent.mkdir(parents=True, exist_ok=True)
-    marker.touch()
+    # Pre-stamp the completion event in the transcript.
+    mark_post_processed("vedant", "sess_pre")
 
     count = await durability.scan_and_close_stale(now)
 
@@ -288,5 +284,4 @@ async def test_concurrent_close_calls_provider_once(tmp_memory, fake_provider):
     )
 
     assert fake_provider.calls == 1
-    marker = settings.resolve(settings.sessions_dir) / "vedant" / "sess_conc.closed"
-    assert marker.exists()
+    assert is_post_processed("vedant", "sess_conc")

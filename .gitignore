@@ -34,7 +34,6 @@ memory/members/
 memory/working/
 sessions/
 cache/
-docs
 
 # ── Secrets ───────────────────────────────────────────────────────────────────
 .env
@@ -56,3 +55,4 @@ hypothesis_test.py
 .agents/
 .claude/
 skills-lock.json
+2025-12-7 9-38-30-Portfolio_analysis_and_advice.json

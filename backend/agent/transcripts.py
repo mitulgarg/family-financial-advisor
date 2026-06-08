@@ -6,6 +6,10 @@ The TranscriptRecord schema is FROZEN at end of Day 2:
   - `tool_calls` defaults to () until Day 4 tool loop populates it.
 
 Only this module may call `markdown_io.append_jsonl` (greppable invariant).
+
+Post-processing status is recorded as a terminal event appended to the same
+transcript (no sibling marker file): the durable JSONL is the single source of
+truth for both last-activity time and whether the session was summarized.
 """
 from __future__ import annotations
 
@@ -48,6 +52,53 @@ def transcript_path(member: str, session_id: str) -> Path:
 
 def turn_id_for(history_len: int) -> str:
     return f"t{history_len // 2 + 1:02d}"
+
+
+_POST_PROCESSING_TYPE = "post_processing"
+_COMPLETED_STATUS = "completed"
+
+
+def mark_post_processed(member: str, session_id: str) -> None:
+    """Append a terminal post-processing-completed event to the transcript.
+
+    This is the durable 'done' signal that replaces the old `.closed` marker
+    file. Written LAST in close_session, after all entities persist, so a crash
+    mid-summarize leaves no completed event and the catch-up scan retries."""
+    record = {
+        "type": _POST_PROCESSING_TYPE,
+        "status": _COMPLETED_STATUS,
+        "ts": now_iso(),
+    }
+    append_jsonl(transcript_path(member, session_id), record)
+
+
+def is_post_processed(member: str, session_id: str) -> bool:
+    """True if the transcript contains a completed post-processing event.
+
+    Never raises — returns False on any error (missing file, unreadable, a
+    malformed/torn line). A torn terminal line therefore reads as 'not done',
+    which is the safe direction (the scan will retry)."""
+    path = transcript_path(member, session_id)
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return False
+
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        try:
+            record = json.loads(stripped)
+        except json.JSONDecodeError:
+            continue
+        if (
+            isinstance(record, dict)
+            and record.get("type") == _POST_PROCESSING_TYPE
+            and record.get("status") == _COMPLETED_STATUS
+        ):
+            return True
+    return False
 
 
 def append_turn(record: TranscriptRecord) -> None:

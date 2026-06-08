@@ -7,6 +7,10 @@ summary is ever written to memory. This module scans all transcript files at
 startup (and on every sweep interval) using real wall-clock timestamps, so
 sessions are closed correctly even after an arbitrary sleep/restart gap.
 
+A session is considered "needs processing" when its transcript carries no
+terminal post-processing-completed event (the durable status — there is no
+sibling marker file) and its last message is stale.
+
 Public API:
     last_message_ts(member, session_id) -> datetime | None
     scan_and_close_stale(now: datetime) -> int
@@ -16,13 +20,11 @@ from __future__ import annotations
 import json
 import logging
 from datetime import datetime
-from pathlib import Path
 
-from backend.agent.memory_updater import close_session, marker_path
+from backend.agent.memory_updater import close_session
 from backend.agent.sessions import STALE_AFTER_SECONDS, evict_if_active
-from backend.agent.transcripts import transcript_path
+from backend.agent.transcripts import is_post_processed, transcript_path
 from backend.config import settings
-from backend.utils.markdown_io import marker_exists
 
 logger = logging.getLogger(__name__)
 
@@ -63,8 +65,8 @@ def last_message_ts(member: str, session_id: str) -> datetime | None:
 
 def _stale_open_sessions(now: datetime) -> list[tuple[str, str]]:
     """Walk every member directory under sessions_dir, find JSONL transcripts
-    that have no sibling .closed marker and whose last message is older than
-    STALE_AFTER_SECONDS.  Returns a new list of (member, session_id) pairs."""
+    that have no completed post-processing event and whose last message is older
+    than STALE_AFTER_SECONDS.  Returns a new list of (member, session_id) pairs."""
     sessions_root = settings.resolve(settings.sessions_dir)
     results: list[tuple[str, str]] = []
 
@@ -77,8 +79,7 @@ def _stale_open_sessions(now: datetime) -> list[tuple[str, str]]:
         member = member_dir.name
         for jsonl_file in member_dir.glob("*.jsonl"):
             session_id = jsonl_file.stem
-            closed_marker = marker_path(member, session_id)
-            if marker_exists(closed_marker):
+            if is_post_processed(member, session_id):
                 continue
             ts = last_message_ts(member, session_id)
             if ts is None:
