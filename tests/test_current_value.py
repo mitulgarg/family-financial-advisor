@@ -18,6 +18,7 @@ from pathlib import Path
 from backend.agent.provenance import Provenance, authority_of
 from backend.agent.current_value import (
     UpsertOutcome,
+    accrue_evidence,
     append_dated_snapshot,
     append_staging,
     upsert_current_value,
@@ -261,3 +262,82 @@ def test_append_staging_idempotent(tmp_path):
     text = f.read_text()
     assert "dad is retiring next year" in text
     assert text.count("<!-- id:obs1 -->") == 1
+
+
+# ---------------------------------------------------------------------------
+# accrue_evidence — soft inference update (§10): insert-if-absent, else accrue
+# (append evidence + bump confidence one notch), claim NEVER flips
+# ---------------------------------------------------------------------------
+
+def test_accrue_inserts_when_topic_absent(tmp_path):
+    f = tmp_path / "inferences.md"
+    out = accrue_evidence(
+        f,
+        key="loss_aversion",
+        fields={"claim": "dislikes drawdowns"},
+        prov=_prov("inference", "low"),
+        dedup_id="e1",
+        evidence="panicked at a 10% dip",
+    )
+    assert out is UpsertOutcome.INSERTED
+    text = f.read_text()
+    assert "## loss_aversion" in text
+    assert "- claim: dislikes drawdowns" in text
+    assert "- confidence: low" in text
+    assert "- status: CURRENT" in text
+
+
+def test_accrue_appends_evidence_and_bumps_confidence(tmp_path):
+    f = tmp_path / "inferences.md"
+    accrue_evidence(
+        f, key="loss_aversion", fields={"claim": "dislikes drawdowns"},
+        prov=_prov("inference", "low", "2026-06-08"), dedup_id="e1",
+        evidence="panicked at a 10% dip",
+    )
+    out = accrue_evidence(
+        f, key="loss_aversion", fields={"claim": "dislikes drawdowns"},
+        prov=_prov("conversation", "low", "2026-06-09"), dedup_id="e2",
+        evidence="sold in a panic again",
+    )
+    assert out is UpsertOutcome.ACCRUED
+    text = f.read_text()
+    # Claim unchanged, still exactly one CURRENT, confidence nudged low -> med.
+    assert text.count("- claim: dislikes drawdowns") == 1
+    assert text.count("- status: CURRENT") == 1
+    assert "- confidence: med" in text
+    assert "- confidence: low" not in text
+    # Evidence trail accrued, last_updated advanced.
+    assert "sold in a panic again" in text
+    assert "- last_updated: 2026-06-09" in text
+
+
+def test_accrue_idempotent(tmp_path):
+    f = tmp_path / "inferences.md"
+    accrue_evidence(
+        f, key="loss_aversion", fields={"claim": "dislikes drawdowns"},
+        prov=_prov("inference", "low"), dedup_id="e1", evidence="first",
+    )
+    kw = dict(
+        key="loss_aversion", fields={"claim": "dislikes drawdowns"},
+        prov=_prov("conversation", "low", "2026-06-09"), dedup_id="e2", evidence="again",
+    )
+    accrue_evidence(f, **kw)
+    out = accrue_evidence(f, **kw)
+    assert out is UpsertOutcome.NOOP
+    assert f.read_text().count("again") == 1
+
+
+def test_accrue_confidence_caps_at_high(tmp_path):
+    f = tmp_path / "inferences.md"
+    accrue_evidence(
+        f, key="risk_tolerance", fields={"stance": "moderate"},
+        prov=_prov("onboarding_quiz", "high"), dedup_id="r1", evidence="quiz",
+    )
+    out = accrue_evidence(
+        f, key="risk_tolerance", fields={"stance": "moderate"},
+        prov=_prov("conversation", "low", "2026-06-09"), dedup_id="r2",
+        evidence="held through a dip",
+    )
+    assert out is UpsertOutcome.ACCRUED
+    text = f.read_text()
+    assert "- confidence: high" in text  # stays capped, never overflows

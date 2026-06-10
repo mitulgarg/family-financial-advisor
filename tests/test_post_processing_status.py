@@ -49,33 +49,35 @@ def _write_transcript(member: str, session_id: str, *, ts: str = "2026-06-06T10:
 # Writer idempotency
 # ---------------------------------------------------------------------------
 
+# These exercise the generic append+dedup mechanism (_append_entry) via an
+# append-only writer (write_recommendation); write_goal is now current-value.
 def test_writer_dedup_skips_second_identical(tmp_memory):
-    writers.write_goal(
-        "vedant", title="House", target="50L", horizon="7y", date="2026-06-06", dedup_id="abc123"
+    writers.write_recommendation(
+        "vedant", title="Park surplus", priority=1, body="x", date="2026-06-06", dedup_id="abc123"
     )
-    writers.write_goal(
-        "vedant", title="House", target="50L", horizon="7y", date="2026-06-06", dedup_id="abc123"
+    writers.write_recommendation(
+        "vedant", title="Park surplus", priority=1, body="x", date="2026-06-06", dedup_id="abc123"
     )
-    content = (tmp_memory / "members" / "vedant" / "goals.md").read_text()
-    assert content.count("## House") == 1
+    content = (tmp_memory / "members" / "vedant" / "recommendations.md").read_text()
+    assert content.count("## Park surplus") == 1
 
 
 def test_writer_without_dedup_id_always_appends(tmp_memory):
-    writers.write_goal("vedant", title="House", target="50L", horizon="7y", date="2026-06-06")
-    writers.write_goal("vedant", title="House", target="50L", horizon="7y", date="2026-06-06")
-    content = (tmp_memory / "members" / "vedant" / "goals.md").read_text()
-    assert content.count("## House") == 2
+    writers.write_recommendation("vedant", title="Park surplus", priority=1, body="x", date="2026-06-06")
+    writers.write_recommendation("vedant", title="Park surplus", priority=1, body="x", date="2026-06-06")
+    content = (tmp_memory / "members" / "vedant" / "recommendations.md").read_text()
+    assert content.count("## Park surplus") == 2
 
 
 def test_writer_different_dedup_id_appends(tmp_memory):
-    writers.write_goal(
-        "vedant", title="House", target="50L", horizon="7y", date="2026-06-06", dedup_id="id1"
+    writers.write_recommendation(
+        "vedant", title="Park surplus", priority=1, body="x", date="2026-06-06", dedup_id="id1"
     )
-    writers.write_goal(
-        "vedant", title="House", target="60L", horizon="8y", date="2026-06-06", dedup_id="id2"
+    writers.write_recommendation(
+        "vedant", title="Park surplus", priority=2, body="y", date="2026-06-06", dedup_id="id2"
     )
-    content = (tmp_memory / "members" / "vedant" / "goals.md").read_text()
-    assert content.count("## House") == 2
+    content = (tmp_memory / "members" / "vedant" / "recommendations.md").read_text()
+    assert content.count("## Park surplus") == 2
 
 
 # ---------------------------------------------------------------------------

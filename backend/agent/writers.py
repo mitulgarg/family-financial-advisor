@@ -19,6 +19,7 @@ from pathlib import Path
 
 from backend.agent.current_value import (
     UpsertOutcome,
+    accrue_evidence,
     append_dated_snapshot,
     append_staging,
     upsert_current_value,
@@ -104,19 +105,32 @@ def write_goal(
     title: str,
     target: str,
     horizon: str,
-    date: str,
-    dedup_id: str | None = None,
-) -> None:
-    """Append a goal to the writer's goals.md."""
+    lifecycle: str = "ACTIVE",
+    source: str = "conversation",
+    confidence: str = "low",
+    as_of: str,
+    last_updated: str | None = None,
+    dedup_id: str,
+) -> UpsertOutcome:
+    """Upsert a goal into goals.md (current-value), keyed by title.
+
+    `lifecycle` is the goal's own state (ACTIVE / ACHIEVED / DROPPED) — named
+    distinctly so it never collides with the engine's reserved CURRENT/SUPERSEDED
+    `status` line. Refining/completing/cancelling a goal supersedes its prior
+    block; the trajectory is kept."""
     p = _member_file(writer, "goals.md")
-    entry = (
-        f"\n## {title}\n"
-        f"- Date: {date}\n"
-        f"- Target: {target}\n"
-        f"- Horizon: {horizon}\n"
-        f"- Status: ACTIVE\n"
+    _assert_writable(writer, p)
+    prov = Provenance(
+        source=source, confidence=confidence, as_of=as_of, last_updated=last_updated or as_of
     )
-    _append_entry(writer, p, entry, dedup_id)
+    return upsert_current_value(
+        p,
+        key=title,
+        fields={"target": target, "horizon": horizon, "lifecycle": lifecycle},
+        prov=prov,
+        dedup_id=dedup_id,
+        discrepancies_path=_working_file("discrepancies.md"),
+    )
 
 
 def write_life_event(
@@ -193,6 +207,41 @@ def write_financial_fact(
     )
 
 
+def write_asset(
+    writer: str,
+    *,
+    key: str,
+    value: str,
+    asset_class: str,
+    source: str,
+    confidence: str,
+    as_of: str,
+    last_updated: str | None = None,
+    dedup_id: str,
+) -> UpsertOutcome:
+    """Upsert one held asset into portfolio_summary.md (current-value), keyed by
+    `<asset_class>.<label>` (e.g. cash.emergency_fund, fd.sbi, gold.physical).
+
+    portfolio_summary is the household ASSET REGISTER, not just market holdings:
+    cash/savings, FDs, EPF/PPF, gold, property, and investments all live here. A
+    conversational asset is low-confidence; a higher-authority upload supersedes
+    it, and a lower-authority conflict stages to working/discrepancies.md rather
+    than clobbering an uploaded value."""
+    p = _member_file(writer, "portfolio_summary.md")
+    _assert_writable(writer, p)
+    prov = Provenance(
+        source=source, confidence=confidence, as_of=as_of, last_updated=last_updated or as_of
+    )
+    return upsert_current_value(
+        p,
+        key=key,
+        fields={"value": value, "asset_class": asset_class},
+        prov=prov,
+        dedup_id=dedup_id,
+        discrepancies_path=_working_file("discrepancies.md"),
+    )
+
+
 def write_portfolio_snapshot(
     writer: str,
     *,
@@ -260,6 +309,54 @@ def write_risk_profile(
     )
     return upsert_current_value(
         p, key=dimension, fields={"stance": stance, "basis": basis}, prov=prov, dedup_id=dedup_id
+    )
+
+
+def accrue_inference(
+    writer: str,
+    *,
+    topic: str,
+    claim: str,
+    basis: str,
+    confidence: str,
+    as_of: str,
+    source: str = "inference",
+    last_updated: str | None = None,
+    dedup_id: str,
+) -> UpsertOutcome:
+    """Soft-update a behavioral inference (§10): insert the claim if the topic is
+    new, else accrue evidence + nudge confidence without flipping the claim."""
+    p = _member_file(writer, "inferences.md")
+    _assert_writable(writer, p)
+    prov = Provenance(
+        source=source, confidence=confidence, as_of=as_of, last_updated=last_updated or as_of
+    )
+    return accrue_evidence(
+        p, key=topic, fields={"claim": claim}, prov=prov, dedup_id=dedup_id, evidence=basis
+    )
+
+
+def accrue_risk_profile(
+    writer: str,
+    *,
+    dimension: str,
+    stance: str,
+    basis: str,
+    confidence: str,
+    as_of: str,
+    source: str = "conversation",
+    last_updated: str | None = None,
+    dedup_id: str,
+) -> UpsertOutcome:
+    """Soft-update a revealed risk stance (§10): insert if the dimension is new,
+    else accrue evidence + nudge confidence without flipping the stance."""
+    p = _member_file(writer, "risk_profile.md")
+    _assert_writable(writer, p)
+    prov = Provenance(
+        source=source, confidence=confidence, as_of=as_of, last_updated=last_updated or as_of
+    )
+    return accrue_evidence(
+        p, key=dimension, fields={"stance": stance}, prov=prov, dedup_id=dedup_id, evidence=basis
     )
 
 

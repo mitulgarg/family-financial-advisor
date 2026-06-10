@@ -78,9 +78,10 @@ class LLMProvider(Protocol):
         tool: dict,
         model: str | None = None,
         max_tokens: int = 1024,
-    ) -> dict:
-        """Non-streaming forced tool-use. Returns the tool's input dict, or {} on
-        empty/error — callers degrade gracefully and must never see an exception."""
+    ) -> dict | None:
+        """Non-streaming forced tool-use. Returns the tool's input dict; {} when
+        the model returned no tool call; None on API error — callers degrade
+        gracefully and must never see an exception."""
         ...
 
 
@@ -227,9 +228,11 @@ class AnthropicProvider:
         tool: dict,
         model: str | None = None,
         max_tokens: int = 1024,
-    ) -> dict:
+    ) -> dict | None:
         """Forced single tool-use, non-streaming. Returns the first tool_use
-        block's input as a dict; {} on empty result or API error (never raises)."""
+        block's input as a dict; {} when the response had no tool call; None on
+        API error (never raises). Callers must treat None as a failure to retry,
+        distinct from {} which is a clean empty result."""
         chosen_model = model or self._default_model
         try:
             resp = await self._client.messages.create(
@@ -246,10 +249,10 @@ class AnthropicProvider:
             return {}
         except anthropic.APIError:
             logger.exception("complete_json API error")
-            return {}
+            return None
         except Exception:
             logger.exception("complete_json unexpected error")
-            return {}
+            return None
 
 
 def get_provider() -> LLMProvider:

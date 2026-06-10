@@ -90,3 +90,198 @@ async def test_second_close_adds_no_duplicate(tmp_memory, fake_provider):
     conv = (tmp_memory / "members" / "vedant" / "conversations.md").read_text()
     assert conv.count("## ") == 1  # exactly one dated block
     assert fake_provider.calls == 1
+
+
+# ---------------------------------------------------------------------------
+# Two-stage reconcile — new current-value / inference / cross-member routing
+# ---------------------------------------------------------------------------
+
+async def test_financial_fact_routed_to_finances(tmp_memory, fake_provider):
+    fake_provider.payload = {
+        "summary_3_lines": ["raise"],
+        "financial_fact_updates": [
+            {"category": "income", "label": "salary", "value": "140000",
+             "cadence": "monthly", "basis": "got a raise"}
+        ],
+    }
+    memory_updater._provider = fake_provider
+    _write_transcript("vedant", "f1")
+
+    await close_session("vedant", "f1")
+
+    fin = (tmp_memory / "members" / "vedant" / "finances.md").read_text()
+    assert "## income.salary" in fin
+    assert "- value: 140000" in fin
+    assert "- source: conversation" in fin
+    assert is_post_processed("vedant", "f1")
+
+
+async def test_goal_set_writes_active(tmp_memory, fake_provider):
+    fake_provider.payload = {
+        "summary_3_lines": ["goal"],
+        "goal_updates": [
+            {"title": "House", "action": "set", "target": "60L", "horizon": "7y", "basis": "wants house"}
+        ],
+    }
+    memory_updater._provider = fake_provider
+    _write_transcript("vedant", "g1")
+
+    await close_session("vedant", "g1")
+
+    goals = (tmp_memory / "members" / "vedant" / "goals.md").read_text()
+    assert "## House" in goals
+    assert "- lifecycle: ACTIVE" in goals
+    assert "- target: 60L" in goals
+
+
+async def test_goal_complete_writes_agent_notes_pointer(tmp_memory, fake_provider):
+    fake_provider.payload = {
+        "summary_3_lines": ["done"],
+        "goal_updates": [{"title": "Emergency fund", "action": "complete", "basis": "fully funded"}],
+    }
+    memory_updater._provider = fake_provider
+    _write_transcript("vedant", "g2")
+
+    await close_session("vedant", "g2")
+
+    goals = (tmp_memory / "members" / "vedant" / "goals.md").read_text()
+    notes = (tmp_memory / "members" / "vedant" / "agent_notes.md").read_text()
+    assert "- lifecycle: ACHIEVED" in goals
+    assert "Emergency fund" in notes
+    assert "ACHIEVED" in notes
+
+
+async def test_goal_set_without_target_is_skipped(tmp_memory, fake_provider):
+    fake_provider.payload = {
+        "summary_3_lines": ["vague"],
+        "goal_updates": [{"title": "Something", "action": "set", "basis": "vague"}],
+    }
+    memory_updater._provider = fake_provider
+    _write_transcript("vedant", "g3")
+
+    await close_session("vedant", "g3")
+
+    # Blank-target set is dropped (not written), but the session still completes.
+    assert not (tmp_memory / "members" / "vedant" / "goals.md").exists()
+    assert is_post_processed("vedant", "g3")
+
+
+async def test_behavior_inference_routed_to_inferences(tmp_memory, fake_provider):
+    fake_provider.payload = {
+        "summary_3_lines": ["anxious"],
+        "inferences": [
+            {"topic": "loss_aversion", "kind": "behavior", "claim": "dislikes drawdowns",
+             "basis": "panicked at a dip", "confidence": "med"}
+        ],
+    }
+    memory_updater._provider = fake_provider
+    _write_transcript("vedant", "i1")
+
+    await close_session("vedant", "i1")
+
+    inf = (tmp_memory / "members" / "vedant" / "inferences.md").read_text()
+    assert "## loss_aversion" in inf
+    assert "- claim: dislikes drawdowns" in inf
+
+
+async def test_risk_inference_routed_to_risk_profile(tmp_memory, fake_provider):
+    fake_provider.payload = {
+        "summary_3_lines": ["risk"],
+        "inferences": [
+            {"topic": "risk_tolerance", "kind": "risk", "claim": "moderate",
+             "basis": "held through a dip", "confidence": "low"}
+        ],
+    }
+    memory_updater._provider = fake_provider
+    _write_transcript("vedant", "i2")
+
+    await close_session("vedant", "i2")
+
+    rp = (tmp_memory / "members" / "vedant" / "risk_profile.md").read_text()
+    assert "## risk_tolerance" in rp
+    assert "- stance: moderate" in rp
+
+
+async def test_cross_member_observation_staged_not_cross_written(tmp_memory, fake_provider):
+    fake_provider.payload = {
+        "summary_3_lines": ["dad"],
+        "cross_member_observations": [
+            {"observation": "retiring next year", "about": "dad", "basis": "said so"}
+        ],
+    }
+    memory_updater._provider = fake_provider
+    _write_transcript("vedant", "x1")
+
+    await close_session("vedant", "x1")
+
+    obs = (tmp_memory / "working" / "cross_member_observations.md").read_text()
+    assert "retiring next year" in obs
+    assert "dad" in obs
+    # never written into another member's tree
+    assert not (tmp_memory / "members" / "mom" / "finances.md").exists()
+
+
+async def test_lower_authority_financial_stages_but_session_completes(tmp_memory, fake_provider):
+    from backend.agent.writers import write_financial_fact
+
+    # A verified upload value exists; a conversational guess conflicts.
+    write_financial_fact(
+        "vedant", key="income.salary", value="200000", category="income", cadence="monthly",
+        source="document_upload", confidence="high", as_of="2026-06-01", dedup_id="seed",
+    )
+    fake_provider.payload = {
+        "summary_3_lines": ["maybe"],
+        "financial_fact_updates": [
+            {"category": "income", "label": "salary", "value": "150000",
+             "cadence": "monthly", "basis": "thinks ~1.5L"}
+        ],
+    }
+    memory_updater._provider = fake_provider
+    _write_transcript("vedant", "s1")
+
+    await close_session("vedant", "s1")
+
+    fin = (tmp_memory / "members" / "vedant" / "finances.md").read_text()
+    assert "- value: 200000" in fin  # upload value untouched
+    assert "- value: 150000" not in fin
+    disc = (tmp_memory / "working" / "discrepancies.md").read_text()
+    assert "income.salary" in disc
+    # STAGED is a clean dispatch → the session still post-processes.
+    assert is_post_processed("vedant", "s1")
+
+
+async def test_api_error_does_not_complete_and_is_retriable(tmp_memory, fake_provider):
+    # complete_json returns None when the model call FAILS (vs {} for a genuine
+    # empty extraction). A failure must NOT be mistaken for a clean empty run:
+    # the session stays un-stamped so the catch-up scan retries it, instead of
+    # being marked done with its memory silently lost.
+    fake_provider.payload = None
+    memory_updater._provider = fake_provider
+    _write_transcript("vedant", "err1")
+
+    await close_session("vedant", "err1")
+
+    assert not is_post_processed("vedant", "err1")  # retriable, not silently lost
+    assert not (tmp_memory / "members" / "vedant" / "conversations.md").exists()
+
+
+async def test_asset_update_routed_to_portfolio_summary(tmp_memory, fake_provider):
+    # An asset the member states in conversation is captured into the asset
+    # register (portfolio_summary), conversation-sourced + low confidence.
+    fake_provider.payload = {
+        "summary_3_lines": ["assets"],
+        "asset_updates": [
+            {"asset_class": "cash", "label": "emergency_fund", "value": "30000",
+             "basis": "have about 30k as an emergency fund"}
+        ],
+    }
+    memory_updater._provider = fake_provider
+    _write_transcript("vedant", "asset1")
+
+    await close_session("vedant", "asset1")
+
+    ps = (tmp_memory / "members" / "vedant" / "portfolio_summary.md").read_text()
+    assert "## cash.emergency_fund" in ps
+    assert "- value: 30000" in ps
+    assert "- source: conversation" in ps
+    assert is_post_processed("vedant", "asset1")

@@ -30,10 +30,54 @@ def test_conversation_summary_appends_dated_block(tmp_memory):
     assert "- park 5L liquid" in content
 
 
+def test_write_asset_upserts_to_portfolio_summary(tmp_memory):
+    # A stated asset (cash/FD/gold/property/holding) lands in portfolio_summary
+    # (the asset register), conversation-sourced + low confidence.
+    out = writers.write_asset(
+        "vedant",
+        key="cash.emergency_fund",
+        value="30000",
+        asset_class="cash",
+        source="conversation",
+        confidence="low",
+        as_of="2026-06-09",
+        dedup_id="asset1",
+    )
+    assert out is UpsertOutcome.INSERTED
+    content = (tmp_memory / "members" / "vedant" / "portfolio_summary.md").read_text()
+    assert "## cash.emergency_fund" in content
+    assert "- value: 30000" in content
+    assert "- asset_class: cash" in content
+    assert "- source: conversation" in content
+
+
+def test_write_asset_lower_authority_stages_not_clobbers(tmp_memory):
+    # An uploaded (high-authority) asset value must not be overwritten by a
+    # lower-authority conversational guess — it stages to discrepancies instead.
+    writers.write_asset(
+        "vedant", key="fd.sbi", value="200000", asset_class="fd",
+        source="document_upload", confidence="high", as_of="2026-06-01", dedup_id="seed",
+    )
+    writers.write_asset(
+        "vedant", key="fd.sbi", value="150000", asset_class="fd",
+        source="conversation", confidence="low", as_of="2026-06-09", dedup_id="guess",
+    )
+    content = (tmp_memory / "members" / "vedant" / "portfolio_summary.md").read_text()
+    assert "- value: 200000" in content  # upload untouched
+    assert "- value: 150000" not in content
+    disc = (tmp_memory / "working" / "discrepancies.md").read_text()
+    assert "fd.sbi" in disc
+
+
 def test_goal_and_life_event_write_to_own_tree(tmp_memory):
-    writers.write_goal("vedant", title="House", target="50L", horizon="7y", date="2026-06-01")
+    writers.write_goal(
+        "vedant", title="House", target="50L", horizon="7y", as_of="2026-06-01", dedup_id="g1"
+    )
     writers.write_life_event("vedant", description="got married", date="2026-06-01")
-    assert (tmp_memory / "members" / "vedant" / "goals.md").exists()
+    goals = (tmp_memory / "members" / "vedant" / "goals.md").read_text()
+    assert "## House" in goals
+    assert "- lifecycle: ACTIVE" in goals
+    assert "- status: CURRENT" in goals
     assert (tmp_memory / "members" / "vedant" / "life_events.md").exists()
 
 

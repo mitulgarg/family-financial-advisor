@@ -44,6 +44,16 @@ class UpsertOutcome(Enum):
     SUPERSEDED = "superseded"  # replaced prior current (equal/higher authority)
     NOOP = "noop"              # this exact key+value already present (idempotent)
     STAGED = "staged"          # lower-authority conflict → staged, current untouched
+    ACCRUED = "accrued"        # soft update: evidence appended + confidence nudged, claim kept
+
+
+_CONFIDENCE_ORDER = ("low", "med", "high")
+
+
+def _bump_confidence(level: str) -> str:
+    """Nudge confidence one notch, capped at high; unknown levels start at low."""
+    i = _CONFIDENCE_ORDER.index(level) if level in _CONFIDENCE_ORDER else 0
+    return _CONFIDENCE_ORDER[min(i + 1, len(_CONFIDENCE_ORDER) - 1)]
 
 
 def _id_marker(dedup_id: str) -> str:
@@ -168,6 +178,60 @@ def upsert_current_value(
     )
     write_markdown_atomic(path, _with_appended("".join(parts), new_block))
     return UpsertOutcome.SUPERSEDED
+
+
+def accrue_evidence(
+    path: Path,
+    *,
+    key: str,
+    fields: dict[str, str],
+    prov: Provenance,
+    dedup_id: str,
+    evidence: str,
+) -> UpsertOutcome:
+    """Soft update for the inference layer (MEMORY_DATA_MODEL §10).
+
+    Insert the claim if its topic is absent; otherwise ACCRUE — append an
+    evidence line, nudge confidence one notch, and advance last_updated, while
+    leaving the claim itself UNTOUCHED. A behavioral read therefore never flips
+    on a single remark; the trajectory accumulates as evidence. Idempotent via
+    dedup_id. `fields` (e.g. {"claim": ...} or {"stance": ...}) is used only when
+    inserting a fresh topic."""
+    content = read_markdown_or_none(path) or ""
+    marker = _id_marker(dedup_id)
+    if marker in content:
+        return UpsertOutcome.NOOP
+
+    parts = _split_blocks(content)
+    cur_idx = next(
+        (
+            i
+            for i, part in enumerate(parts)
+            if _is_block_for(part, key) and "- status: CURRENT" in part
+        ),
+        None,
+    )
+
+    if cur_idx is None:
+        block = _render_block(key, fields, prov, dedup_id, status="CURRENT")
+        write_markdown_atomic(path, _with_appended(content, block))
+        return UpsertOutcome.INSERTED
+
+    block = parts[cur_idx]
+    cur_conf = _field(block, "confidence")
+    if cur_conf:
+        block = block.replace(
+            f"- confidence: {cur_conf}", f"- confidence: {_bump_confidence(cur_conf)}", 1
+        )
+    cur_lu = _field(block, "last_updated")
+    if cur_lu:
+        block = block.replace(
+            f"- last_updated: {cur_lu}", f"- last_updated: {prov.last_updated}", 1
+        )
+    block = block.rstrip("\n") + f"\n- evidence: {evidence} ({prov.as_of}) {marker}\n"
+    parts[cur_idx] = block
+    write_markdown_atomic(path, "".join(parts))
+    return UpsertOutcome.ACCRUED
 
 
 def append_dated_snapshot(

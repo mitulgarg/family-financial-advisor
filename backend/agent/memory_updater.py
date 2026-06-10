@@ -29,8 +29,13 @@ from backend.agent.transcripts import (
     transcript_path,
 )
 from backend.agent.writers import (
+    accrue_inference,
+    accrue_risk_profile,
     append_conversation_summary,
     record_status_transition,
+    stage_cross_member_observation,
+    write_asset,
+    write_financial_fact,
     write_goal,
     write_life_event,
     write_recommendation,
@@ -53,16 +58,47 @@ def _get_provider() -> LLMProvider:
     return _provider
 
 
-_SUMMARIZER_SYSTEM = (
-    "You are summarizing a closed advisory session for durable memory. Extract "
-    "only what was actually established this session — do not invent. Produce a "
-    "concise 3-line summary plus any new recommendations, goals, stated life "
-    "events, and status changes that the family member and advisor agreed on."
-)
+_SUMMARIZER_SYSTEM = """You are the extraction stage of a two-stage memory pipeline for a personal financial advisor. Read one closed advisory conversation with a single family member and call the `summarize` tool once with the durable outcomes it established. A separate automatic stage files each item into the right place and decides how it is stored — your only job is to report, faithfully and with evidence, what this conversation actually established. You never decide storage and never supply precision the conversation did not give.
+
+INSTRUCTIONS
+1. Read the entire conversation before extracting.
+2. Extract only what was established or stated in THIS session. Do not restate standing facts that did not change.
+3. Give every factual or behavioral item a short basis — the words or exchange it rests on. If you cannot point to a basis, do not record the item.
+4. If the member revises something during the session, report only the latest version; the correction wins.
+5. When you are unsure what an item refers to, or a figure is too vague to be a fact, leave it out. Assert only what is clear.
+6. Keep summary_3_lines to three short lines.
+
+DO
+- financial_fact_updates: income, expense, or liability changes the member states — category, a short label in their own words, the amount as stated, and cadence.
+- asset_updates: assets the member says they HOLD — cash/savings (e.g. an emergency fund), fixed deposits, EPF/PPF, gold, property, or a fund/investment balance. Give the asset class, a short label in their own words, and the value as stated.
+- goal_updates: goals set, refined, completed, or cancelled — the action, plus target figure and horizon when stated.
+- inferences: behavioral signals the conversation reveals — risk tolerance and horizon (kind "risk"), or loss aversion, decision style, liquidity comfort, financial anxiety (kind "behavior") — each with its basis and an honest confidence.
+- cross_member_observations: anything the member says about ANOTHER person (e.g. "my dad is retiring next year") — the observation, who it is about, and the basis.
+- new_recommendations, life_events_stated, status_transitions: advice the advisor gave, life events stated, and any explicit status change to a prior goal or recommendation.
+- Use the member's own framing for labels, titles, and topics, and keep each basis to one short clause.
+
+DON'T
+- Don't INVENT or estimate a figure the member did not give. Record an income, balance, or asset value only when the member states it; if they say something changed but give no number, report that it changed and omit the figure. A precise figure the member DOES state should be captured (a later upload supersedes it) — capturing a stated value is not "inventing".
+- Don't flip a behavioral read on a single offhand remark. Record an inference only when the conversation genuinely reveals it, and set confidence honestly: low for a passing hint, higher only for a clear or repeated signal.
+- Don't write a fact about another person into this member's record — put it in cross_member_observations, never as this member's own fact.
+- Don't pad. Omit a field rather than fill it with a guess.
+
+EXAMPLES
+Input: "I switched jobs last month — take-home is Rs 1.4L now, up from 1.1. And I want to start saving for a house, maybe Rs 60L in 7 years."
+Call: financial_fact_updates=[{category:"income", label:"salary", value:"140000", cadence:"monthly", basis:"switched jobs, take-home now Rs 1.4L"}]; goal_updates=[{title:"House purchase", action:"set", target:"60L", horizon:"7y", basis:"wants ~Rs 60L for a house in 7y"}]; summary_3_lines=["Switched jobs; take-home up to Rs 1.4L/mo","New goal: Rs 60L house in 7 years","Has income headroom to allocate"].
+
+Input: "When my portfolio dropped last week I couldn't sleep — almost sold everything. I hate seeing red. Oh, and my dad's retiring next year."
+Call: inferences=[{topic:"loss_aversion", kind:"behavior", claim:"strong loss aversion - distressed by drawdowns, urge to sell", basis:"couldn't sleep after a dip, 'hate seeing red'", confidence:"med"}]; cross_member_observations=[{observation:"retiring next year", about:"dad", basis:"'my dad's retiring next year'"}]. No financial_fact_updates or asset_updates — no figure was stated, so none is authored.
+
+Input: "I remembered I also have about 2 lakh sitting in an FD, and roughly 50g of gold at home."
+Call: asset_updates=[{asset_class:"fd", label:"fixed deposit", value:"200000", basis:"~2L in an FD"}, {asset_class:"gold", label:"physical gold", value:"50g", basis:"~50g gold at home"}]; summary_3_lines=["Disclosed previously-unmentioned assets","~Rs 2L in a fixed deposit","~50g physical gold at home"].
+
+CONTEXT
+This runs once, automatically, when a session closes. You are extracting for one member's record only. Downstream, a deterministic reconciler files each item by its destination's rule and tags it source=conversation with the confidence you set; a low-confidence conversational value never overwrites a verified document, and a repeated behavioral signal accrues as evidence rather than replacing the prior read. Your honesty about basis and confidence is what decides whether a value is trusted, accrued, or held for confirmation."""
 
 _SUMMARIZE_TOOL = {
     "name": "summarize",
-    "description": "Extract durable outcomes from the session transcript.",
+    "description": "Report the durable outcomes this conversation established.",
     "input_schema": {
         "type": "object",
         "properties": {
@@ -83,16 +119,89 @@ _SUMMARIZE_TOOL = {
                     "required": ["title"],
                 },
             },
-            "new_goals": {
+            "goal_updates": {
                 "type": "array",
                 "items": {
                     "type": "object",
                     "properties": {
                         "title": {"type": "string"},
+                        "action": {
+                            "type": "string",
+                            "enum": ["set", "refine", "complete", "cancel"],
+                        },
                         "target": {"type": "string"},
                         "horizon": {"type": "string"},
+                        "basis": {"type": "string"},
                     },
-                    "required": ["title"],
+                    "required": ["title", "action"],
+                },
+            },
+            "financial_fact_updates": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "category": {
+                            "type": "string",
+                            "enum": ["income", "expense", "liability"],
+                        },
+                        "label": {"type": "string"},
+                        "value": {"type": "string"},
+                        "cadence": {
+                            "type": "string",
+                            "enum": ["monthly", "annual", "one_time"],
+                        },
+                        "basis": {"type": "string"},
+                    },
+                    "required": ["category", "label", "value"],
+                },
+            },
+            "asset_updates": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "asset_class": {
+                            "type": "string",
+                            "enum": [
+                                "cash", "equity", "mutual_fund", "fd",
+                                "epf_ppf", "gold", "property", "other",
+                            ],
+                        },
+                        "label": {"type": "string"},
+                        "value": {"type": "string"},
+                        "basis": {"type": "string"},
+                    },
+                    "required": ["asset_class", "label", "value"],
+                },
+            },
+            "inferences": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "topic": {"type": "string"},
+                        "kind": {"type": "string", "enum": ["risk", "behavior"]},
+                        "claim": {"type": "string"},
+                        "basis": {"type": "string"},
+                        "confidence": {
+                            "type": "string",
+                            "enum": ["low", "med", "high"],
+                        },
+                    },
+                    "required": ["topic", "kind", "claim", "basis"],
+                },
+            },
+            "cross_member_observations": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "observation": {"type": "string"},
+                        "about": {"type": "string"},
+                        "basis": {"type": "string"},
+                    },
+                    "required": ["observation", "about"],
                 },
             },
             "life_events_stated": {
@@ -153,13 +262,30 @@ def _run(label: str, fn) -> bool:
         return False
 
 
+# Goal action → lifecycle state written into goals.md.
+_GOAL_LIFECYCLE = {
+    "set": "ACTIVE",
+    "refine": "ACTIVE",
+    "complete": "ACHIEVED",
+    "cancel": "DROPPED",
+}
+
+
 def _dispatch(member: str, session_id: str, raw: dict, today: str) -> bool:
-    """Route summarizer output to the per-file writers. All writes use
-    writer=member so isolation holds regardless of model output.
+    """Stage 2 — route stage-1 candidates to per-file writers, each loading only
+    its own target file and applying its registered mode (append / current-value
+    / dated-log) via the writers. All writes use writer=member so cross-member
+    isolation holds regardless of model output.
 
     Returns True only if every attempted write succeeded. Entries missing
     required fields are skipped (logged, not counted as failures) so a bad entry
-    cannot block completion forever."""
+    cannot block completion forever.
+
+    INVARIANT: every UpsertOutcome — INSERTED, SUPERSEDED, NOOP, ACCRUED, and
+    STAGED — is a SUCCESSFUL dispatch. STAGED (a lower-authority conflict held
+    for confirmation) is a clean outcome, not a failure, so it must never
+    withhold the completion stamp. Only a raised exception (environmental write
+    failure) makes _run return False and triggers retry."""
     all_ok = True
 
     summary_lines = raw.get("summary_3_lines") or []
@@ -191,20 +317,144 @@ def _dispatch(member: str, session_id: str, raw: dict, today: str) -> bool:
             ),
         )
 
-    for goal in raw.get("new_goals", []):
-        title = goal.get("title")
-        if not title:
-            logger.warning("memory_updater: skipping goal with no title")
+    for fact in raw.get("financial_fact_updates", []):
+        category = fact.get("category")
+        label = fact.get("label")
+        value = fact.get("value")
+        if not (category and label and value):
+            logger.warning("memory_updater: skipping incomplete financial_fact_update")
             continue
         all_ok &= _run(
+            "financial_fact",
+            lambda category=category, label=label, value=value, fact=fact: write_financial_fact(
+                member,
+                key=f"{category}.{label}",
+                value=value,
+                category=category,
+                cadence=fact.get("cadence", "monthly"),
+                source="conversation",
+                confidence="low",
+                as_of=today,
+                dedup_id=_dedup_id(session_id, "fin", category, label, value),
+            ),
+        )
+
+    for asset in raw.get("asset_updates", []):
+        asset_class = asset.get("asset_class")
+        label = asset.get("label")
+        value = asset.get("value")
+        if not (asset_class and label and value):
+            logger.warning("memory_updater: skipping incomplete asset_update")
+            continue
+        all_ok &= _run(
+            "asset",
+            lambda asset_class=asset_class, label=label, value=value: write_asset(
+                member,
+                key=f"{asset_class}.{label}",
+                value=value,
+                asset_class=asset_class,
+                source="conversation",
+                confidence="low",
+                as_of=today,
+                dedup_id=_dedup_id(session_id, "asset", asset_class, label, value),
+            ),
+        )
+
+    for goal in raw.get("goal_updates", []):
+        title = goal.get("title")
+        action = goal.get("action")
+        if not (title and action in _GOAL_LIFECYCLE):
+            logger.warning("memory_updater: skipping goal_update missing title/action")
+            continue
+        target = goal.get("target", "")
+        # A set/refine with no target would write a blank goal — don't (§4:
+        # target required or the goal is not written). Complete/cancel needs none.
+        if action in ("set", "refine") and not target:
+            logger.warning(
+                "memory_updater: skipping %s goal '%s' with no target", action, title
+            )
+            continue
+        lifecycle = _GOAL_LIFECYCLE[action]
+        all_ok &= _run(
             "goal",
-            lambda goal=goal, title=title: write_goal(
+            lambda title=title, target=target, goal=goal, lifecycle=lifecycle: write_goal(
                 member,
                 title=title,
-                target=goal.get("target", ""),
+                target=target,
                 horizon=goal.get("horizon", ""),
+                lifecycle=lifecycle,
+                source="conversation",
+                confidence="low",
+                as_of=today,
+                dedup_id=_dedup_id(session_id, "goal", title, lifecycle),
+            ),
+        )
+        # A completion/cancellation leaves a pointer in agent_notes (§4).
+        if action in ("complete", "cancel"):
+            all_ok &= _run(
+                "goal_status_note",
+                lambda title=title, lifecycle=lifecycle: record_status_transition(
+                    member,
+                    item=title,
+                    from_status="ACTIVE",
+                    to_status=lifecycle,
+                    date=today,
+                    dedup_id=_dedup_id(session_id, "goalnote", title, lifecycle),
+                ),
+            )
+
+    for inf in raw.get("inferences", []):
+        topic = inf.get("topic")
+        kind = inf.get("kind")
+        claim = inf.get("claim")
+        basis = inf.get("basis")
+        if not (topic and claim and basis and kind in ("risk", "behavior")):
+            logger.warning(
+                "memory_updater: skipping inference missing topic/kind/claim/basis"
+            )
+            continue
+        confidence = inf.get("confidence", "low")
+        if kind == "risk":
+            all_ok &= _run(
+                "risk_inference",
+                lambda topic=topic, claim=claim, basis=basis, confidence=confidence: accrue_risk_profile(
+                    member,
+                    dimension=topic,
+                    stance=claim,
+                    basis=basis,
+                    confidence=confidence,
+                    as_of=today,
+                    dedup_id=_dedup_id(session_id, "risk", topic, claim),
+                ),
+            )
+        else:
+            all_ok &= _run(
+                "behavior_inference",
+                lambda topic=topic, claim=claim, basis=basis, confidence=confidence: accrue_inference(
+                    member,
+                    topic=topic,
+                    claim=claim,
+                    basis=basis,
+                    confidence=confidence,
+                    as_of=today,
+                    dedup_id=_dedup_id(session_id, "inf", topic, claim),
+                ),
+            )
+
+    for obs in raw.get("cross_member_observations", []):
+        observation = obs.get("observation")
+        about = obs.get("about")
+        if not (observation and about):
+            logger.warning("memory_updater: skipping incomplete cross_member_observation")
+            continue
+        all_ok &= _run(
+            "cross_member_observation",
+            lambda observation=observation, about=about: stage_cross_member_observation(
+                member,
+                observation=observation,
+                about=about,
                 date=today,
-                dedup_id=_dedup_id(session_id, "goal", title),
+                dedup_id=_dedup_id(session_id, "xmem", about, observation),
             ),
         )
 
@@ -275,8 +525,20 @@ async def close_session(member: str, session_id: str) -> None:
             messages=[{"role": "user", "content": content}],
             tool=_SUMMARIZE_TOOL,
             model=settings.summarizer_model,
-            max_tokens=1024,
+            max_tokens=8000,
         )
+
+        # None signals the summarizer call FAILED (vs {} for a clean empty
+        # extraction). A failure must not be stamped complete, or the session's
+        # memory is silently lost; leaving it un-stamped lets the catch-up scan
+        # retry it.
+        if raw is None:
+            logger.warning(
+                "memory_updater: summarizer call failed %s/%s — leaving un-stamped for retry",
+                member,
+                session_id,
+            )
+            return
 
         today = date.today().isoformat()
         all_ok = _dispatch(member, session_id, raw, today)

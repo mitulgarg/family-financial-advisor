@@ -115,7 +115,7 @@ Generic chatbots can call a calculator now, so basic arithmetic isn't the edge. 
 
 ### Privacy enforced in code, not by request
 
-When Mom uses the app, her conversation stays hers. The family head sees a *summary*, not her transcript. If her session ever tries to write into Dad's private memory, the writer layer rejects it at the code level, not as a polite instruction to the AI. The prompt sent to Anthropic is also stripped of names, PAN, account numbers, and bank names before it leaves your machine.
+When Mom uses the app, her conversation stays hers. The family head sees a *summary*, not her transcript. If her session ever tries to write into Dad's private memory, the writer layer rejects it at the code level, not as a polite instruction to the AI. An anonymiser that strips names, PAN, account numbers, and bank names from prompts before they leave your machine is planned — it ships last in the MVP, once the core loop is stable.
 
 ### Memory updates itself from conversation
 
@@ -148,11 +148,11 @@ You type a message
         |
 [Assembler - pure Python]      ~50ms   builds the prompt from markdown files
         |
-[Anonymiser]                    ~1ms   strips PAN, account numbers, names
+[Anonymiser — planned]          ~1ms   strips PAN, account numbers, names
         |
 [Main agent - Sonnet 4.6]      3-8s    streams the reply, calls modeling tools
         |
-[Guardrails]                            strips product names, hedges certainty
+[Guardrails — planned]                  strips product names, hedges certainty
         |
 You see the reply (streaming, token by token)
         |
@@ -167,7 +167,7 @@ No vector database. No RAG. No knowledge graph. No SQLite. Just markdown files, 
 
 | Layer | Choice |
 |---|---|
-| Language | Python 3.11+ |
+| Language | Python 3.12+ |
 | Backend | FastAPI + uvicorn (SSE streaming) |
 | Main model | Claude Sonnet 4.6 |
 | Classifier + summariser | Claude Haiku 4.5 |
@@ -184,7 +184,7 @@ What's deliberately *not* in the stack: no database (markdown scans are fast at 
 ## Privacy & regulatory positioning
 
 - **Local-first:** all financial data, memory, and chat history stay on your machine.
-- **Anonymised before any LLM call:** names become "Member A/B/C"; account numbers, PAN, Aadhaar, and phone numbers are stripped; bank and broker names are replaced with generic terms.
+- **Anonymisation before any LLM call (planned, ships last in the MVP):** names will become "Member A/B/C"; account numbers, PAN, Aadhaar, and phone numbers stripped; bank and broker names replaced with generic terms. Until it ships, prompts contain member names and figures as stored in memory.
 - **Category-only recommendations:** the advisor suggests *"a large-cap index fund"*, never a named product. This keeps it outside SEBI's definition of "investment advice".
 - **Honest "I don't know":** on HUF/NRI taxation, estate planning, specific product comparisons, and market timing, it defers to a qualified professional.
 - **No marketing data, no analytics, no telemetry.**

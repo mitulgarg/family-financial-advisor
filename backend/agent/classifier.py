@@ -157,7 +157,7 @@ async def classify(
         model=settings.classifier_model,
         max_tokens=256,
     )
-    result = _build(raw, member)
+    result = _build(raw or {}, member)  # None (API error) → {} → safe FULL fallback
     logger.info(
         "classifier: %s/%s intent=%s level=%s followup=%s",
         member,

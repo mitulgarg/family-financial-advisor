@@ -241,9 +241,10 @@ file per candidate and reconciles per that file's mode.
 | `recommendations` | `recommendations.md` | append | |
 | `status_transitions` | `agent_notes.md` | append | |
 | `life_events` | `life_events.md` | append | occurred or anticipated |
-| `financial_fact_updates` | `finances.md` / `portfolio_summary.md` | current-value | `source: conversation`, `confidence: low` → supersede-but-flag; never clobbers an upload |
-| `goal_updates` | `goals.md` | current-value | refine/complete/cancel; new goals allowed |
-| `inferences` (incl. risk) | `inferences.md` / `risk_profile.md` | current-value (soft, §10) | evidence-accrual |
+| `financial_fact_updates` | `finances.md` | current-value | `source: conversation`, `confidence: low`; equal/higher authority supersedes, a lower-authority conflict auto-stages to `working/discrepancies.md` (never clobbers an upload). **v1: finances only** — conversational portfolio holdings are out of scope (uploads own balances). |
+| `goal_updates` | `goals.md` | current-value | action→lifecycle (set/refine=ACTIVE, complete=ACHIEVED, cancel=DROPPED); set/refine with no target is dropped (not written blank); complete/cancel also leaves a pointer in `agent_notes.md` |
+| `inferences` (incl. risk) | `inferences.md` / `risk_profile.md` | current-value (soft, §10) | **accrue, not flip**: insert if the topic/dimension is new, else append evidence + nudge confidence one notch with the claim UNCHANGED. Revising the claim itself is a deferred confirmation path. |
+| `cross_member_observations` | `working/cross_member_observations.md` | append (staging) | observation about another person → staged for confirmation (§7); never written into that member's tree |
 
 **Boundaries (write into the extractor prompt):**
 - Onboarding/upload own the *initial* value of every structured fact;
@@ -253,6 +254,17 @@ file per candidate and reconciles per that file's mode.
 - A conversation mentioning another member **stages** an observation (§7); it
   does not mutate the family roster.
 - **When unsure, stage — don't assert** (§8).
+
+**v1 implementation notes (override as the pipeline matures):**
+- Inferences **accrue** (never auto-flip): stage 1 is memory-free, so it cannot
+  judge "contradicts a stored claim"; the reconciler therefore inserts a new
+  topic or accrues evidence + nudges confidence, and a true claim reversal is a
+  deferred confirmation path rather than an automatic supersede.
+- Goal/inference matching is **exact-key** (title / topic); a rephrased goal
+  creates a new one rather than refining it — a later stage-2 semantic match can
+  fix this if it gets noisy.
+- Cross-member *patterns* (`family/inferences.md`, §7 case 3) are **deferred**;
+  only single-member facts and staged cross-member *observations* are wired.
 
 ---
 

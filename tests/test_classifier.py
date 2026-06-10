@@ -16,6 +16,20 @@ async def test_empty_response_falls_back(fake_provider):
     assert result.output["is_followup"] is False
 
 
+async def test_provider_error_falls_back(fake_provider):
+    # complete_json returns None on an API error; the classifier must treat it
+    # like an empty result and fall back to FULL, never crash on None.
+    fake_provider.payload = None
+    result = await classify(
+        provider=fake_provider,
+        member="vedant",
+        user_message="where should I park 5 lakh that just matured?",
+        history=[],
+    )
+    assert result.intent == "portfolio_review"
+    assert result.output["context_level"] == "FULL"
+
+
 async def test_valid_response_maps_files(fake_provider):
     fake_provider.payload = {
         "context_level": "FULL",
