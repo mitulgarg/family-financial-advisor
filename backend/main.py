@@ -24,7 +24,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
-from backend.agent import durability, pipeline, sessions
+from backend.agent import durability, onboarding, pipeline, sessions
 from backend.agent.llm_provider import get_provider
 from backend.agent.memory_updater import close_session
 from backend.agent.pipeline import TurnDone, TurnError, TurnToken
@@ -135,6 +135,22 @@ def history(x_member_id: str = Header(..., alias="X-Member-Id")) -> dict:
         "session_id": active_sid,
         "messages": sessions.get_history(x_member_id, active_sid),
     }
+
+
+@app.get("/api/onboarding/status")
+def onboarding_status(x_member_id: str = Header(..., alias="X-Member-Id")) -> dict:
+    _assert_member_exists(x_member_id)
+    finished = onboarding.is_complete(
+        settings.resolve(settings.memory_dir), x_member_id
+    )
+    return {"finished": finished}
+
+
+@app.post("/api/onboarding/complete")
+def onboarding_complete(x_member_id: str = Header(..., alias="X-Member-Id")) -> dict:
+    _assert_member_exists(x_member_id)
+    onboarding.mark_complete(settings.resolve(settings.memory_dir), x_member_id)
+    return {"finished": True}
 
 
 @app.post("/chat")

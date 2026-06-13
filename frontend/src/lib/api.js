@@ -4,4 +4,6 @@ export const ENDPOINTS = Object.freeze({
   sessionClose: '/session/close',
   members: '/api/members',
   history: '/api/history',
+  onboardingStatus: '/api/onboarding/status',
+  onboardingComplete: '/api/onboarding/complete',
 })

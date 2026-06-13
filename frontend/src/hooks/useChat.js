@@ -154,7 +154,7 @@ export function useChat() {
     }
   }, [])
 
-  // Manual session close. NOT wired to `beforeunload` — that event fires on
+  // Manual session close. NOT wired to `beforeunload`, that event fires on
   // refresh too, which would wipe the session right before /api/history can
   // hydrate it. Backend's 30-min idle timeout handles abandoned sessions.
   const closeSession = useCallback(() => {

@@ -20,7 +20,7 @@ const writeStoredMember = (id) => {
     if (id) localStorage.setItem(STORAGE_KEY, id)
     else localStorage.removeItem(STORAGE_KEY)
   } catch {
-    /* ignore — localStorage unavailable (private mode, SSR, etc.) */
+    /* ignore, localStorage unavailable (private mode, SSR, etc.) */
   }
 }
 
@@ -78,7 +78,7 @@ export const useChatStore = create((set, get) => ({
 
   // Replace the entire message list from a backend `/history` response.
   // Synthesizes fresh client-side ids since the server has no need to mint
-  // them. Skipped when the user is mid-stream — overwriting under a live
+  // them. Skipped when the user is mid-stream, overwriting under a live
   // stream would orphan the in-flight assistant placeholder.
   hydrateFromHistory: (sessionId, messages) => {
     if (get().streaming) return

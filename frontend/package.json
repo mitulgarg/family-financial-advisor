@@ -7,9 +7,14 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "check:copy": "node scripts/check-copy.mjs"
   },
   "dependencies": {
+    "@fontsource-variable/outfit": "^5.2.8",
+    "@phosphor-icons/react": "^2.1.10",
+    "@radix-ui/react-slider": "^1.4.0",
+    "motion": "^12.40.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "react-markdown": "^10.1.0",
