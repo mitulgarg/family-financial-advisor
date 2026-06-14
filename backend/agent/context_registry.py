@@ -78,7 +78,7 @@ REGISTRY: tuple[ContextEntry, ...] = (
         path_template="memory/members/{member}/portfolio_summary.md",
         description="Current investment holdings and allocation",
         mode="current-value",
-        preload="classifier_predicted",
+        preload="always",
         scope="member",
     ),
     ContextEntry(
@@ -86,7 +86,7 @@ REGISTRY: tuple[ContextEntry, ...] = (
         path_template="memory/members/{member}/goals.md",
         description="Goal planning, surplus allocation",
         mode="current-value",
-        preload="classifier_predicted",
+        preload="always",
         scope="member",
     ),
     ContextEntry(
@@ -94,7 +94,7 @@ REGISTRY: tuple[ContextEntry, ...] = (
         path_template="memory/members/{member}/finances.md",
         description="Cash flow + debt: income, recurring expenses, liabilities",
         mode="current-value",
-        preload="classifier_predicted",
+        preload="always",
         scope="member",
     ),
     ContextEntry(
@@ -102,7 +102,7 @@ REGISTRY: tuple[ContextEntry, ...] = (
         path_template="memory/members/{member}/risk_profile.md",
         description="Revealed risk tolerance + investment horizon",
         mode="current-value",
-        preload="classifier_predicted",
+        preload="always",
         scope="member",
     ),
     # tax + insurance: DEFERRED files (MEMORY_DATA_MODEL §13 — not built yet). Kept

@@ -39,6 +39,10 @@ _SECTION_HEADERS: dict[str, str] = {
     "member.profile": "Member profile",
     "member.conversations": "Recent conversations",
     "family.calendar": "Family calendar",
+    "member.finances": "Finances (income, expenses, debt)",
+    "member.portfolio_summary": "Investments",
+    "member.goals": "Goals",
+    "member.risk_profile": "Risk profile",
 }
 
 
@@ -114,6 +118,7 @@ def _build_full_prompt(
 ) -> AssembledPrompt:
     project_root = settings.project_root
     loaded: list[str] = []
+    loaded_paths: set = set()
     missing: list[str] = []
     tier1_parts: list[str] = []
 
@@ -145,6 +150,7 @@ def _build_full_prompt(
             header = f"{header} — {active_member}"
         tier1_parts.append(f"# {header}\n{body.strip()}")
         loaded.append(entry.name)
+        loaded_paths.add(path)
 
     tier1_text = "\n\n".join(tier1_parts)
     tier1 = SystemBlock(text=tier1_text, cache=False)
@@ -157,6 +163,8 @@ def _build_full_prompt(
         tier2_parts: list[str] = []
         for name in relevant_files:
             path = project_root / "memory" / f"{name}.md"
+            if path in loaded_paths:
+                continue  # already in Tier 1 (now-always file); don't double-load
             content = read_markdown_or_none(path)
             if content is None:
                 logger.warning("assembler: tier2 file missing: %s", name)
