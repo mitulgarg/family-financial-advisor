@@ -170,6 +170,69 @@ def test_lower_authority_conflict_stages(tmp_path):
     assert "document_upload" in disc_text
 
 
+def test_lower_authority_same_value_is_noop_not_staged(tmp_path):
+    # A lower-authority source that merely RESTATES the current value is NOT a
+    # conflict and must not be staged. Regression: identical 120000 from
+    # conversation vs onboarding was wrongly flagged NEEDS_CONFIRMATION.
+    f = tmp_path / "finances.md"
+    disc = tmp_path / "discrepancies.md"
+    upsert_current_value(
+        f,
+        key="income.salary",
+        fields={"value": "120000"},
+        prov=_prov("onboarding_form", "high"),
+        dedup_id="id_onb",
+    )
+    out = upsert_current_value(
+        f,
+        key="income.salary",
+        fields={"value": "120000"},  # same value, lower authority
+        prov=_prov("conversation", "low"),
+        dedup_id="id_conv",
+        discrepancies_path=disc,
+    )
+    assert out is UpsertOutcome.NOOP
+    assert not disc.exists() or "income.salary" not in disc.read_text()
+    text = f.read_text()
+    assert text.count("## income.salary") == 1
+    assert "- source: onboarding_form" in text
+
+
+def test_lower_authority_normalized_same_value_is_noop(tmp_path):
+    # Light normalization: "Rs 1,20,000" equals "120000", so no spurious stage.
+    f = tmp_path / "finances.md"
+    disc = tmp_path / "discrepancies.md"
+    upsert_current_value(
+        f, key="income.salary", fields={"value": "120000"},
+        prov=_prov("onboarding_form", "high"), dedup_id="id_onb",
+    )
+    out = upsert_current_value(
+        f, key="income.salary", fields={"value": "Rs 1,20,000"},
+        prov=_prov("conversation", "low"), dedup_id="id_conv2",
+        discrepancies_path=disc,
+    )
+    assert out is UpsertOutcome.NOOP
+    assert not disc.exists()
+
+
+def test_lower_authority_different_value_still_stages(tmp_path):
+    # Guard must not over-merge: a genuinely different lower-authority value
+    # still stages as a discrepancy.
+    f = tmp_path / "finances.md"
+    disc = tmp_path / "discrepancies.md"
+    upsert_current_value(
+        f, key="income.salary", fields={"value": "120000"},
+        prov=_prov("onboarding_form", "high"), dedup_id="id_onb",
+    )
+    out = upsert_current_value(
+        f, key="income.salary", fields={"value": "90000"},
+        prov=_prov("conversation", "low"), dedup_id="id_conv3",
+        discrepancies_path=disc,
+    )
+    assert out is UpsertOutcome.STAGED
+    assert "income.salary" in disc.read_text()
+
+
 # ---------------------------------------------------------------------------
 # upsert_current_value — idempotent supersede / no resurrection
 # ---------------------------------------------------------------------------

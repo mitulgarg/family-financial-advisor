@@ -77,6 +77,24 @@ def _field(block: str, field: str) -> str:
     return m.group(1).strip() if m else ""
 
 
+def _norm(v: str) -> str:
+    """Light value normalization for equality checks: lowercase, drop spaces,
+    commas, and a leading rupee/inr marker. Deliberately conservative — never
+    rounds or fuzzy-matches, so two genuinely different values stay different."""
+    s = v.strip().lower().replace(",", "").replace(" ", "")
+    for pre in ("rs", "inr", "₹"):
+        if s.startswith(pre):
+            s = s[len(pre):]
+    return s
+
+
+def _values_match(block: str, fields: dict[str, str]) -> bool:
+    """True if every candidate field already equals the block's value (after
+    normalization). A lower-authority source that merely restates the current
+    value is not a conflict, so it must not be staged as a discrepancy."""
+    return all(_norm(_field(block, k)) == _norm(v) for k, v in fields.items())
+
+
 def _with_appended(content: str, block: str) -> str:
     """Append a block to existing content with a single blank-line separator."""
     if not content:
@@ -167,6 +185,10 @@ def upsert_current_value(
 
     existing_source = _field(parts[cur_idx], "source")
     if authority_of(prov.source) < authority_of(existing_source):
+        # Lower authority, but if it merely restates the current value it's not a
+        # conflict — skip the spurious discrepancy entirely.
+        if _values_match(parts[cur_idx], fields):
+            return UpsertOutcome.NOOP
         if discrepancies_path is not None:
             _stage_discrepancy(
                 discrepancies_path, key, fields, prov, existing_source, dedup_id
