@@ -78,10 +78,14 @@ class LLMProvider(Protocol):
         tool: dict,
         model: str | None = None,
         max_tokens: int = 1024,
+        thinking_budget: int = 0,
     ) -> dict | None:
         """Non-streaming forced tool-use. Returns the tool's input dict; {} when
         the model returned no tool call; None on API error — callers degrade
-        gracefully and must never see an exception."""
+        gracefully and must never see an exception.
+
+        `thinking_budget` > 0 enables extended thinking; because the API forbids
+        forced tool choice with thinking, tool_choice relaxes to "auto"."""
         ...
 
 
@@ -228,21 +232,32 @@ class AnthropicProvider:
         tool: dict,
         model: str | None = None,
         max_tokens: int = 1024,
+        thinking_budget: int = 0,
     ) -> dict | None:
         """Forced single tool-use, non-streaming. Returns the first tool_use
         block's input as a dict; {} when the response had no tool call; None on
         API error (never raises). Callers must treat None as a failure to retry,
-        distinct from {} which is a clean empty result."""
+        distinct from {} which is a clean empty result.
+
+        With `thinking_budget` > 0, extended thinking is enabled. The Anthropic
+        API forbids forced tool choice while thinking, so tool_choice relaxes to
+        "auto" and we rely on the prompt to elicit the tool call (a text-only
+        reply yields {}, the clean-empty path)."""
         chosen_model = model or self._default_model
+        kwargs: dict = {
+            "model": chosen_model,
+            "max_tokens": max_tokens,
+            "system": _render_system(system),
+            "messages": messages,
+            "tools": [tool],
+        }
+        if thinking_budget > 0:
+            kwargs["thinking"] = {"type": "enabled", "budget_tokens": thinking_budget}
+            kwargs["tool_choice"] = {"type": "auto"}
+        else:
+            kwargs["tool_choice"] = {"type": "tool", "name": tool["name"]}
         try:
-            resp = await self._client.messages.create(
-                model=chosen_model,
-                max_tokens=max_tokens,
-                system=_render_system(system),
-                messages=messages,
-                tools=[tool],
-                tool_choice={"type": "tool", "name": tool["name"]},
-            )
+            resp = await self._client.messages.create(**kwargs)
             for block in resp.content:
                 if getattr(block, "type", None) == "tool_use":
                     return dict(block.input)
