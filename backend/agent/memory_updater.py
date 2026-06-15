@@ -67,6 +67,7 @@ INSTRUCTIONS
 4. If the member revises something during the session, report only the latest version; the correction wins.
 5. When you are unsure what an item refers to, or a figure is too vague to be a fact, leave it out. Assert only what is clear.
 6. Keep summary_3_lines to three short lines.
+7. ALWAYS call the `summarize` tool exactly once. Even if nothing durable was established, still call it — with just summary_3_lines saying so and every other field empty. Never answer in plain text instead of calling the tool; a text-only reply is treated as a failure and the whole session is lost.
 
 DO
 - financial_fact_updates: income, expense, or liability changes the member states — category, a short label in their own words, the amount as stated, and cadence.
@@ -79,7 +80,9 @@ DO
 
 DON'T
 - Don't INVENT or estimate a figure the member did not give. Record an income, balance, or asset value only when the member states it; if they say something changed but give no number, report that it changed and omit the figure. A precise figure the member DOES state should be captured (a later upload supersedes it) — capturing a stated value is not "inventing".
-- Don't flip a behavioral read on a single offhand remark. Record an inference only when the conversation genuinely reveals it, and set confidence honestly: low for a passing hint, higher only for a clear or repeated signal.
+- Don't record a PREVIOUS or no-longer-true figure as a current fact. If the member contrasts an old value with a new one ("take-home is 1.4L now, up from 1.1"), report only the current one (1.4L); the old number is context, not a fact to store. A previous salary is never a current income.
+- Don't file a recurring INVESTMENT contribution as an expense. A monthly SIP, mutual-fund contribution, or money put into an investment is an asset_update (the holding it builds), not an expense. Rent, EMIs, bills, and family support are expenses.
+- Don't flip a behavioral read on a single offhand remark. Record an inference only when the conversation genuinely reveals it, and set confidence honestly: low for a passing hint, med for a clear signal, and high ONLY for a pattern that is explicitly stated or repeated across the conversation — never high on just one or two datapoints.
 - Don't write a fact about another person into this member's record — put it in cross_member_observations, never as this member's own fact.
 - Don't pad. Omit a field rather than fill it with a guess.
 

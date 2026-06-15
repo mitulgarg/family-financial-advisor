@@ -80,12 +80,15 @@ class LLMProvider(Protocol):
         max_tokens: int = 1024,
         thinking_budget: int = 0,
     ) -> dict | None:
-        """Non-streaming forced tool-use. Returns the tool's input dict; {} when
-        the model returned no tool call; None on API error — callers degrade
-        gracefully and must never see an exception.
+        """Non-streaming tool-use. Returns the tool's input dict ({} if the tool
+        was called with no entries); None when the model made NO tool call or the
+        API errored — both are failed extractions the caller must retry, never an
+        exception.
 
         `thinking_budget` > 0 enables extended thinking; because the API forbids
-        forced tool choice with thinking, tool_choice relaxes to "auto"."""
+        forced tool choice with thinking, tool_choice relaxes to "auto", which is
+        exactly why a no-tool-call (text-only) reply is possible and maps to
+        None."""
         ...
 
 
@@ -234,15 +237,16 @@ class AnthropicProvider:
         max_tokens: int = 1024,
         thinking_budget: int = 0,
     ) -> dict | None:
-        """Forced single tool-use, non-streaming. Returns the first tool_use
-        block's input as a dict; {} when the response had no tool call; None on
-        API error (never raises). Callers must treat None as a failure to retry,
-        distinct from {} which is a clean empty result.
+        """Single tool-use, non-streaming. Returns the first tool_use block's
+        input as a dict ({} if the tool was called with no entries). Returns None
+        when the response had NO tool call OR the API errored (never raises) —
+        callers treat both as a failed extraction to retry, distinct from {}
+        which is a tool call that ran clean but empty.
 
         With `thinking_budget` > 0, extended thinking is enabled. The Anthropic
         API forbids forced tool choice while thinking, so tool_choice relaxes to
-        "auto" and we rely on the prompt to elicit the tool call (a text-only
-        reply yields {}, the clean-empty path)."""
+        "auto" and we rely on the prompt to elicit the tool call; a text-only
+        reply (no tool call) therefore yields None, the retriable path."""
         chosen_model = model or self._default_model
         kwargs: dict = {
             "model": chosen_model,
@@ -261,7 +265,13 @@ class AnthropicProvider:
             for block in resp.content:
                 if getattr(block, "type", None) == "tool_use":
                     return dict(block.input)
-            return {}
+            # No tool_use block at all. Under thinking, tool_choice is "auto", so
+            # the model can reply in plain text and skip the tool. That is a
+            # FAILED extraction, not a clean empty one: return None so the caller
+            # leaves the session un-stamped and retries, instead of stamping it
+            # complete with zero writes (silent memory loss). {} is reserved for
+            # a tool call that was made but carried no entries.
+            return None
         except anthropic.APIError:
             logger.exception("complete_json API error")
             return None
