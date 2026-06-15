@@ -50,6 +50,7 @@ Thumbs.db
 # ── Dev / debug scripts (not part of the app) ─────────────────────────────────
 *_smoke.py
 hypothesis_test.py
+docs/issues
 
 # ── Tooling ───────────────────────────────────────────────────────────────────
 .agents/
