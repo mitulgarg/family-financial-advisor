@@ -72,6 +72,21 @@ def _is_block_for(part: str, key: str) -> bool:
     return part.split("\n", 1)[0].strip() == f"## {key}"
 
 
+def key_for_id(content: str, target_id: str) -> str | None:
+    """Map an extractor-supplied `target_id` back to the canonical key of the
+    block carrying its `<!-- id:target_id -->` marker, or None if no block has it
+    (MEMORY_DATA_MODEL §16). A SUPERSEDED block keeps its marker, so the id still
+    resolves. Lets an update land on the existing block's key instead of a
+    parallel one — the deterministic half of agentic surgical edit."""
+    if not target_id:
+        return None
+    marker = _id_marker(target_id)
+    for part in _split_blocks(content):
+        if part.startswith("## ") and marker in part:
+            return part.split("\n", 1)[0][len("## "):].strip()
+    return None
+
+
 def _field(block: str, field: str) -> str:
     m = re.search(rf"(?m)^- {re.escape(field)}: (.*)$", block)
     return m.group(1).strip() if m else ""

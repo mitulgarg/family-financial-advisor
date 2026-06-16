@@ -21,6 +21,7 @@ from backend.agent.current_value import (
     accrue_evidence,
     append_dated_snapshot,
     append_staging,
+    key_for_id,
     upsert_current_value,
 )
 
@@ -404,3 +405,26 @@ def test_accrue_confidence_caps_at_high(tmp_path):
     assert out is UpsertOutcome.ACCRUED
     text = f.read_text()
     assert "- confidence: high" in text  # stays capped, never overflows
+
+
+# --- key_for_id: map an extractor target_id back to its block's canonical key (M4) ---
+
+
+def test_key_for_id_finds_block_key():
+    content = (
+        "## expense.total\n- value: 25000\n- status: CURRENT\n<!-- id:exp1 -->\n\n"
+        "## income.salary\n- value: 120000\n- status: CURRENT\n<!-- id:inc1 -->\n"
+    )
+    assert key_for_id(content, "exp1") == "expense.total"
+    assert key_for_id(content, "inc1") == "income.salary"
+
+
+def test_key_for_id_missing_returns_none():
+    content = "## expense.total\n- value: 25000\n<!-- id:exp1 -->\n"
+    assert key_for_id(content, "nope") is None
+
+
+def test_key_for_id_resolves_superseded_block():
+    # a superseded block keeps its marker, so the id still resolves to its key
+    content = "## expense.total\n- value: 25000\n- status: SUPERSEDED\n<!-- id:exp1 -->\n"
+    assert key_for_id(content, "exp1") == "expense.total"

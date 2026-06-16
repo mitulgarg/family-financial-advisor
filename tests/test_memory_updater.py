@@ -274,6 +274,95 @@ async def test_api_error_does_not_complete_and_is_retriable(tmp_memory, fake_pro
     assert not (tmp_memory / "members" / "vedant" / "conversations.md").exists()
 
 
+async def test_financial_edit_targets_existing_block_no_duplicate(tmp_memory, fake_provider):
+    # M4: extractor reports the same expense under a different label but TARGETS
+    # the existing block's id → the update lands on that block's key, not a
+    # parallel one. Closes #2 (duplicate fact, two keys) / #6 (key drift).
+    from backend.agent.writers import write_financial_fact
+
+    write_financial_fact(
+        "vedant", key="expense.total", value="25000", category="expense",
+        cadence="monthly", source="conversation", confidence="low",
+        as_of="2026-06-01", dedup_id="exp1",
+    )
+    fake_provider.payload = {
+        "summary_3_lines": ["spend"],
+        "financial_fact_updates": [
+            {"category": "expense", "label": "personal spending", "value": "30000",
+             "cadence": "monthly", "basis": "spends 30k now", "target_id": "exp1"}
+        ],
+    }
+    memory_updater._provider = fake_provider
+    _write_transcript("vedant", "m4a")
+
+    await close_session("vedant", "m4a")
+
+    fin = (tmp_memory / "members" / "vedant" / "finances.md").read_text()
+    assert "## expense.personal spending" not in fin   # NO parallel key
+    assert "- value: 30000" in fin                      # new current value
+    assert "- status: SUPERSEDED" in fin                # old one kept, superseded
+    assert fin.count("## expense.total") == 2           # superseded + current
+
+
+async def test_bad_target_id_appends_as_new_block(tmp_memory, fake_provider):
+    # Decision (2026-06-15): a hallucinated/unknown target_id falls back to the
+    # candidate's own key — appended as a new block, not dropped or crashed.
+    from backend.agent.writers import write_financial_fact
+
+    write_financial_fact(
+        "vedant", key="expense.total", value="25000", category="expense",
+        cadence="monthly", source="conversation", confidence="low",
+        as_of="2026-06-01", dedup_id="exp1",
+    )
+    fake_provider.payload = {
+        "summary_3_lines": ["spend"],
+        "financial_fact_updates": [
+            {"category": "expense", "label": "gym", "value": "2000",
+             "cadence": "monthly", "basis": "new gym fee", "target_id": "ghost"}
+        ],
+    }
+    memory_updater._provider = fake_provider
+    _write_transcript("vedant", "m4b")
+
+    await close_session("vedant", "m4b")
+
+    fin = (tmp_memory / "members" / "vedant" / "finances.md").read_text()
+    assert "## expense.gym" in fin       # appended under its own key
+    assert "- value: 2000" in fin
+    assert is_post_processed("vedant", "m4b")
+
+
+async def test_targeted_edit_lower_authority_stages_no_duplicate(tmp_memory, fake_provider):
+    # Targeting a higher-authority block with a low-authority value must NOT
+    # clobber it and must NOT spawn a parallel key — it stages a discrepancy.
+    from backend.agent.writers import write_financial_fact
+
+    write_financial_fact(
+        "vedant", key="expense.total", value="25000", category="expense",
+        cadence="monthly", source="document_upload", confidence="high",
+        as_of="2026-06-01", dedup_id="exp1",
+    )
+    fake_provider.payload = {
+        "summary_3_lines": ["spend"],
+        "financial_fact_updates": [
+            {"category": "expense", "label": "personal spending", "value": "99999",
+             "cadence": "monthly", "basis": "thinks ~99999", "target_id": "exp1"}
+        ],
+    }
+    memory_updater._provider = fake_provider
+    _write_transcript("vedant", "m4c")
+
+    await close_session("vedant", "m4c")
+
+    fin = (tmp_memory / "members" / "vedant" / "finances.md").read_text()
+    assert "- value: 25000" in fin                     # upload value untouched
+    assert "- value: 99999" not in fin
+    assert "## expense.personal spending" not in fin    # no parallel key
+    disc = (tmp_memory / "working" / "discrepancies.md").read_text()
+    assert "expense.total" in disc
+    assert is_post_processed("vedant", "m4c")
+
+
 async def test_existing_memory_is_fed_to_extractor_with_ids(tmp_memory, fake_provider):
     # M3 de-blind: the member's current-value files (with id markers) must reach
     # the extractor so it can see what already exists. The id markers MUST survive

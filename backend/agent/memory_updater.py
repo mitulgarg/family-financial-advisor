@@ -23,6 +23,7 @@ import logging
 from datetime import date
 
 from backend.agent.context_registry import REGISTRY
+from backend.agent.current_value import key_for_id
 from backend.agent.llm_provider import LLMProvider, SystemBlock, get_provider
 from backend.agent.transcripts import (
     is_post_processed,
@@ -83,6 +84,18 @@ def _existing_memory_for(member: str) -> str:
     return "\n\n".join(sections)
 
 
+def _resolve_target_key(member: str, fname: str, target_id: str, fallback_key: str) -> str:
+    """Resolve an extractor `target_id` to the existing block's canonical key so
+    an update lands in place instead of under a parallel key (closes #2/#6). A
+    missing or unknown id falls back to the candidate's own key — i.e. appended
+    as a new block (decision 2026-06-15: bad target_id -> append)."""
+    if not target_id:
+        return fallback_key
+    base = settings.resolve(settings.memory_dir) / "members" / member
+    content = read_markdown_or_none(base / fname) or ""
+    return key_for_id(content, target_id) or fallback_key
+
+
 _SUMMARIZER_SYSTEM = """You are the extraction stage of a two-stage memory pipeline for a personal financial advisor. Read one closed advisory conversation with a single family member and call the `summarize` tool once with the durable outcomes it established. A separate automatic stage files each item into the right place and decides how it is stored — your only job is to report, faithfully and with evidence, what this conversation actually established. You never decide storage and never supply precision the conversation did not give.
 
 INSTRUCTIONS
@@ -93,6 +106,7 @@ INSTRUCTIONS
 5. When you are unsure what an item refers to, or a figure is too vague to be a fact, leave it out. Assert only what is clear.
 6. Keep summary_3_lines to three short lines.
 7. ALWAYS call the `summarize` tool exactly once. Even if nothing durable was established, still call it — with just summary_3_lines saying so and every other field empty. Never answer in plain text instead of calling the tool; a text-only reply is treated as a failure and the whole session is lost.
+8. You may be shown the member's EXISTING MEMORY. When a financial fact or asset you report is a CHANGE to one already there, set its `target_id` to that block's id (from its `<!-- id:... -->` marker) so it updates in place instead of creating a duplicate. Match by MEANING, not exact label — "personal spending" and an existing "total expense" are the same fact, so target it. Omit `target_id` only for a genuinely new fact.
 
 DO
 - financial_fact_updates: income, expense, or liability changes the member states — category, a short label in their own words, the amount as stated, and cadence.
@@ -180,6 +194,10 @@ _SUMMARIZE_TOOL = {
                             "enum": ["monthly", "annual", "one_time"],
                         },
                         "basis": {"type": "string"},
+                        "target_id": {
+                            "type": "string",
+                            "description": "If this CHANGES a fact already in EXISTING MEMORY, the id from that block's <!-- id:... --> marker, so it updates in place. Omit for a genuinely new fact.",
+                        },
                     },
                     "required": ["category", "label", "value"],
                 },
@@ -199,6 +217,10 @@ _SUMMARIZE_TOOL = {
                         "label": {"type": "string"},
                         "value": {"type": "string"},
                         "basis": {"type": "string"},
+                        "target_id": {
+                            "type": "string",
+                            "description": "If this CHANGES an asset already in EXISTING MEMORY, the id from that block's <!-- id:... --> marker, so it updates in place. Omit for a genuinely new asset.",
+                        },
                     },
                     "required": ["asset_class", "label", "value"],
                 },
@@ -352,18 +374,21 @@ def _dispatch(member: str, session_id: str, raw: dict, today: str) -> bool:
         if not (category and label and value):
             logger.warning("memory_updater: skipping incomplete financial_fact_update")
             continue
+        key = _resolve_target_key(
+            member, "finances.md", fact.get("target_id", ""), f"{category}.{label}"
+        )
         all_ok &= _run(
             "financial_fact",
-            lambda category=category, label=label, value=value, fact=fact: write_financial_fact(
+            lambda key=key, value=value, fact=fact, category=category: write_financial_fact(
                 member,
-                key=f"{category}.{label}",
+                key=key,
                 value=value,
                 category=category,
                 cadence=fact.get("cadence", "monthly"),
                 source="conversation",
                 confidence="low",
                 as_of=today,
-                dedup_id=_dedup_id(session_id, "fin", category, label, value),
+                dedup_id=_dedup_id(session_id, "fin", key, value),
             ),
         )
 
@@ -374,17 +399,20 @@ def _dispatch(member: str, session_id: str, raw: dict, today: str) -> bool:
         if not (asset_class and label and value):
             logger.warning("memory_updater: skipping incomplete asset_update")
             continue
+        key = _resolve_target_key(
+            member, "portfolio_summary.md", asset.get("target_id", ""), f"{asset_class}.{label}"
+        )
         all_ok &= _run(
             "asset",
-            lambda asset_class=asset_class, label=label, value=value: write_asset(
+            lambda key=key, value=value, asset_class=asset_class: write_asset(
                 member,
-                key=f"{asset_class}.{label}",
+                key=key,
                 value=value,
                 asset_class=asset_class,
                 source="conversation",
                 confidence="low",
                 as_of=today,
-                dedup_id=_dedup_id(session_id, "asset", asset_class, label, value),
+                dedup_id=_dedup_id(session_id, "asset", key, value),
             ),
         )
 
