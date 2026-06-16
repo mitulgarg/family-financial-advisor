@@ -274,6 +274,42 @@ async def test_api_error_does_not_complete_and_is_retriable(tmp_memory, fake_pro
     assert not (tmp_memory / "members" / "vedant" / "conversations.md").exists()
 
 
+async def test_existing_memory_is_fed_to_extractor_with_ids(tmp_memory, fake_provider):
+    # M3 de-blind: the member's current-value files (with id markers) must reach
+    # the extractor so it can see what already exists. The id markers MUST survive
+    # frontmatter stripping (the M4 edit-ops will target them).
+    from backend.agent.writers import write_financial_fact
+
+    write_financial_fact(
+        "vedant", key="income.salary", value="120000", category="income",
+        cadence="monthly", source="onboarding_form", confidence="high",
+        as_of="2026-06-01", dedup_id="seedid",
+    )
+    fake_provider.payload = {"summary_3_lines": ["hi"]}
+    memory_updater._provider = fake_provider
+    _write_transcript("vedant", "m3a")
+
+    await close_session("vedant", "m3a")
+
+    system_text = "\n".join(b.text for b in fake_provider.last_kwargs["system"])
+    assert "income.salary" in system_text       # existing fact is visible
+    assert "120000" in system_text
+    assert "<!-- id:seedid -->" in system_text   # WATCH-POINT: ids survive stripping
+
+
+async def test_close_session_without_existing_memory_still_runs(tmp_memory, fake_provider):
+    # No member files yet (first ever session) → extractor just gets the prompt,
+    # no crash, session completes.
+    fake_provider.payload = {"summary_3_lines": ["hi"]}
+    memory_updater._provider = fake_provider
+    _write_transcript("vedant", "m3b")
+
+    await close_session("vedant", "m3b")
+
+    assert fake_provider.calls == 1
+    assert is_post_processed("vedant", "m3b")
+
+
 async def test_asset_update_routed_to_portfolio_summary(tmp_memory, fake_provider):
     # An asset the member states in conversation is captured into the asset
     # register (portfolio_summary), conversation-sourced + low confidence.

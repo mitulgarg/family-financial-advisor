@@ -22,6 +22,7 @@ import hashlib
 import logging
 from datetime import date
 
+from backend.agent.context_registry import REGISTRY
 from backend.agent.llm_provider import LLMProvider, SystemBlock, get_provider
 from backend.agent.transcripts import (
     is_post_processed,
@@ -41,7 +42,7 @@ from backend.agent.writers import (
     write_recommendation,
 )
 from backend.config import settings
-from backend.utils.markdown_io import read_markdown_or_none
+from backend.utils.markdown_io import read_markdown_or_none, strip_frontmatter
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +57,30 @@ def _get_provider() -> LLMProvider:
     if _provider is None:
         _provider = get_provider()
     return _provider
+
+
+def _existing_memory_for(member: str) -> str:
+    """The member's current-value files concatenated with their `<!-- id:... -->`
+    markers intact, so the extractor sees what already exists instead of running
+    blind (M3) — and, downstream, can target those ids with edit-ops (M4).
+
+    Resolved via `settings.memory_dir` — the SAME base the writers use — so the
+    extractor reads exactly the tree where writes land. Frontmatter is stripped
+    (it carries no facts); the id comments live in the body and survive, which is
+    the whole point and is asserted by test."""
+    base = settings.resolve(settings.memory_dir) / "members" / member
+    sections: list[str] = []
+    for entry in REGISTRY:
+        if entry.scope != "member" or entry.mode != "current-value":
+            continue
+        fname = entry.path_template.rsplit("/", 1)[-1]
+        content = read_markdown_or_none(base / fname)
+        if not content:
+            continue
+        body = strip_frontmatter(content).strip()
+        if body:
+            sections.append(f"### {entry.name}\n{body}")
+    return "\n\n".join(sections)
 
 
 _SUMMARIZER_SYSTEM = """You are the extraction stage of a two-stage memory pipeline for a personal financial advisor. Read one closed advisory conversation with a single family member and call the `summarize` tool once with the durable outcomes it established. A separate automatic stage files each item into the right place and decides how it is stored — your only job is to report, faithfully and with evidence, what this conversation actually established. You never decide storage and never supply precision the conversation did not give.
@@ -523,8 +548,23 @@ async def close_session(member: str, session_id: str) -> None:
             )
             return
 
+        system_blocks = [SystemBlock(text=_SUMMARIZER_SYSTEM)]
+        existing = _existing_memory_for(member)
+        if existing:
+            system_blocks.append(
+                SystemBlock(
+                    text=(
+                        f"EXISTING MEMORY for {member} — the facts already stored. "
+                        "Do not restate anything here that did not change this "
+                        "session; report only what this conversation adds or "
+                        "changes. Each block's `<!-- id:... -->` marker is its "
+                        f"stable handle.\n\n{existing}"
+                    )
+                )
+            )
+
         raw = await _get_provider().complete_json(
-            system=[SystemBlock(text=_SUMMARIZER_SYSTEM)],
+            system=system_blocks,
             messages=[{"role": "user", "content": content}],
             tool=_SUMMARIZE_TOOL,
             model=settings.summarizer_model,
