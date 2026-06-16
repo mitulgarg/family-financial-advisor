@@ -8,6 +8,7 @@ from typing import Literal, TypedDict
 from backend.agent.aggregator import read_family_name
 from backend.agent.context_registry import entries_by_policy, resolve_path
 from backend.agent.llm_provider import SystemBlock
+from backend.agent.staleness import annotate_stale_blocks
 from backend.config import settings
 from backend.utils.markdown_io import read_markdown_or_none, strip_frontmatter
 
@@ -145,6 +146,10 @@ def _build_full_prompt(
             continue
 
         body = strip_frontmatter(content)
+        # Flag long-stale current-value figures so the advisor knows they may be
+        # outdated (read-side only; stored memory is untouched).
+        if entry.mode == "current-value":
+            body = annotate_stale_blocks(body, today=today)
         header = _SECTION_HEADERS.get(entry.name, entry.name)
         if entry.scope == "member":
             header = f"{header} — {active_member}"

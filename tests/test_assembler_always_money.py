@@ -79,3 +79,15 @@ def test_money_not_double_loaded_when_intent_predicts_it(full_root) -> None:
 def test_persona_does_not_hardcode_family_surname() -> None:
     persona = (settings.project_root / "skills" / "core_system.md").read_text().lower()
     assert "shah" not in persona
+
+
+def test_stale_current_value_block_is_flagged_in_full_prompt(full_root) -> None:
+    # A long-past as_of on a CURRENT money block should surface a staleness
+    # caveat in the assembled prompt so the advisor knows the figure may be old.
+    (full_root / "members" / "vedant" / "finances.md").write_text(
+        "## income.salary\n- value: 120000\n- as_of: 2025-01-01\n- status: CURRENT\n"
+    )
+    text = _full_text(full_root)
+    assert "120000" in text
+    assert "days ago" in text  # caveat injected
+    assert "2025-01-01" in text
