@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import AsyncIterator
 
 from backend.agent import sessions, transcripts
+from backend.agent.agent_loop import ToolPhaseBoundary, run_agent_loop
 from backend.agent.assembler import AssemblyError, assemble
 from backend.agent.classifier import classify
 from backend.agent.llm_provider import (
@@ -24,13 +25,16 @@ from backend.agent.llm_provider import (
     StreamEnd,
     StreamError,
     TextDelta,
-    ToolUseRequest,
 )
-from backend.agent.orchestrator import run_turn
+from backend.agent.tools.dispatch import default_dispatch
 from backend.agent.transcripts import TranscriptRecord
+from backend.config import settings
 from backend.text_utils import to_bubbles
 
 logger = logging.getLogger(__name__)
+
+# One shared tool dispatch for the agent loop (read_context + future tools).
+_DISPATCH = default_dispatch()
 
 
 # --- TurnEvent union (FROZEN at end of Day 2) ---
@@ -99,22 +103,48 @@ async def run_chat_turn(
             prompt.debug.get("missing", []),
         )
 
+        tool_calls_log: list[dict] = []
         parts: list[str] = []
-        async for ev in run_turn(
-            provider=provider, prompt=prompt, max_tokens=max_tokens
+        reply_chunks: list[str] = []
+
+        def _flush() -> str | None:
+            # Sanitize the buffered beat through to_bubbles (em-dash strip +
+            # blank-line bubbles), then return the SSE text to emit. A separator
+            # is prefixed after the first chunk because the frontend concatenates
+            # token events, so the new beat must start its own bubble group.
+            chunk = "\n\n".join(to_bubbles("".join(parts)))
+            parts.clear()
+            if not chunk:
+                return None
+            prefix = "\n\n" if reply_chunks else ""
+            reply_chunks.append(chunk)
+            return prefix + chunk
+
+        async for ev in run_agent_loop(
+            provider=provider,
+            prompt=prompt,
+            dispatch=_DISPATCH,
+            active_member=member,
+            max_tokens=max_tokens,
+            max_iterations=settings.max_tool_iterations,
+            tool_calls_log=tool_calls_log,
         ):
             if isinstance(ev, TextDelta):
-                # Buffer, don't stream raw: the reply must pass through
-                # to_bubbles (em-dash strip + bubble split) before the user
-                # sees it. Emitted once below.
+                # Buffer, don't stream raw: each beat passes through to_bubbles
+                # before the user sees it. Flushed at a tool boundary and at end.
                 parts.append(ev.text)
-            elif isinstance(ev, ToolUseRequest):
-                logger.info("pipeline: tool use ignored on Day 2: %s", ev.name)
-                continue
+            elif isinstance(ev, ToolPhaseBoundary):
+                # The model is about to look something up: flush its "let me
+                # check on that" beat now so it reaches the user during the
+                # lookup, then the answer arrives as a follow-up bubble.
+                logger.info("pipeline: tool phase -> %s", ev.tool_names)
+                emitted = _flush()
+                if emitted:
+                    yield TurnToken(emitted)
             elif isinstance(ev, StreamError):
-                # Exponential-retry seam: wrap the `async for` above with
-                # backoff before yielding TurnError. Mid-stream failure
-                # currently aborts the turn — no history/transcript write.
+                # Exponential-retry seam: wrap the loop above with backoff before
+                # yielding TurnError. Mid-stream failure currently aborts the
+                # turn — no history/transcript write.
                 yield TurnError(ev.message)
                 return
             elif isinstance(ev, StreamEnd):
@@ -132,11 +162,11 @@ async def run_chat_turn(
                 )
                 break
 
-        # Single sanitization path: strip em dashes and normalize to blank-line
-        # bubbles before the reply reaches the user or the stored history.
-        assistant_msg = "\n\n".join(to_bubbles("".join(parts)))
-        if assistant_msg:
-            yield TurnToken(assistant_msg)
+        emitted = _flush()
+        if emitted:
+            yield TurnToken(emitted)
+        # Full reply for history/transcript: the bubbles the user saw, in order.
+        assistant_msg = "\n\n".join(reply_chunks)
 
         turn_id = transcripts.turn_id_for(len(snapshot))
 
@@ -151,6 +181,7 @@ async def run_chat_turn(
                 turn_id=turn_id,
                 user_msg=user_message,
                 assistant_msg=assistant_msg,
+                tool_calls=tuple(tool_calls_log),
                 intent=classification.intent,
             )
         )

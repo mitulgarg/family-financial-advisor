@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     skills_dir: Path = Path("skills")
     sessions_dir: Path = Path("sessions")
     max_response_tokens: int = 2048
+    # Hard cap on tool-use round-trips per turn (Tier 3 agent loop), so a model
+    # that keeps asking for tools can never loop forever.
+    max_tool_iterations: int = 4
     enable_cache: bool = False
     cors_origins: list[str] = ["http://localhost:5173"]
     project_root: Path = Path(__file__).resolve().parent.parent

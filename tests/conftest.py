@@ -34,6 +34,26 @@ class FakeProvider:
         return self.payload
 
 
+class ScriptedProvider:
+    """Streams a pre-scripted sequence of rounds for tool-loop tests. Each call
+    to `stream` pops the next round (a list of StreamEvents) and yields it,
+    recording the kwargs it was called with so a test can assert what messages
+    and tools each round-trip received."""
+
+    def __init__(self, rounds: list[list]) -> None:
+        self.rounds = [list(r) for r in rounds]
+        self.calls: list[dict] = []
+
+    async def stream(self, **kwargs) -> AsyncIterator:
+        self.calls.append(kwargs)
+        events = self.rounds.pop(0) if self.rounds else []
+        for ev in events:
+            yield ev
+
+    async def complete_json(self, **kwargs) -> dict:
+        return {}
+
+
 @pytest.fixture
 def fake_provider() -> FakeProvider:
     return FakeProvider()

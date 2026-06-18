@@ -94,8 +94,7 @@ def _build_catalog() -> str:
     skill_entries = [e for e in entries_by_policy("agent_invoked") if e.scope == "skill"]
     lines.append("AVAILABLE PLAYBOOKS — call read_context(name) when handling these question types:")
     for entry in skill_entries:
-        short_name = entry.name.split(".", 1)[-1]
-        lines.append(f"- {short_name}: {entry.description}")
+        lines.append(f"- {entry.name}: {entry.description}")
 
     memory_entries = entries_by_policy("classifier_predicted") + [
         e for e in entries_by_policy("agent_invoked") if e.scope != "skill"
