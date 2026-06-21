@@ -1,163 +1,148 @@
-# Family Financial Advisor
+<div align="center">
 
-> A private AI advisor that learns your whole family's money, teaches you how to think about it, and grows with you over time.
+<pre>
+  _____                   _____ _______ _    _ _____
+ / ____|  /\        /\   |  __ \__   __| |  | |_   _|
+| (___   /  \      /  \  | |__) | | |  | |__| | | |
+ \___ \ / /\ \    / /\ \ |  _  /  | |  |  __  | | |
+ ____) / ____ \  / ____ \| | \ \  | |  | |  | |_| |_
+|_____/_/    \_\/_/    \_\_|  \_\ |_|  |_|  |_|_____|
+</pre>
 
-Most money tools are built for one person and one account. Real family decisions aren't like that. When you ask *"should I prepay the home loan or invest the surplus?"*, the honest answer depends on your parents' retirement runway, your sibling's education timeline, and your spouse's job stability, not just your own balance sheet.
+### Rich families always have a money guy. What if yours did too?
 
-This is an AI advisor that knows every family member as a distinct person, explains its reasoning so you understand each decision yourself, and is built to make you more financially literate, not to sell you a product.
+Someone who knows your whole family and their money inside out. That is Saarthi, and it runs on your own machine.
 
-And it isn't a search box you query once and forget. You talk to it like a family friend who happens to be a great advisor, and every conversation makes it understand your family a little better. The advice compounds, the way counsel from someone who has known you for a decade beats counsel from someone you just met.
+`local-first` · `markdown memory` · `per-member` · `teaches, never sells` · `no cloud, no database`
 
-It runs on your own machine. Your financial data never leaves it.
+![status](https://img.shields.io/badge/status-active%20development-orange)
+![local--first](https://img.shields.io/badge/local--first-yes-brightgreen)
+![python](https://img.shields.io/badge/python-3.12+-blue)
+![models](https://img.shields.io/badge/models-Claude%20Sonnet%20%2B%20Haiku-8A2BE2)
+
+[See it in action](#see-it-in-action) · [How it works](#how-it-works-under-the-hood) · [What works today](#what-works-today) · [Roadmap](#roadmap) · [Run it](#run-it)
+
+</div>
 
 ---
 
-## What actually makes it different
+A money guy is the quiet advantage wealthy families have always had: one trusted person who knows every member, remembers every decision, and tells you the tradeoff instead of selling you a product. Saarthi is that person for everyone else.
 
-You can ask ChatGPT or Claude a money question today and get a fluent answer. Modern chatbots even remember a few things and can run a calculator. So we won't pretend they're useless. Here is what this product genuinely does that they don't:
+Most money tools assume one person and one account. Real family decisions are not like that. Ask *"should I prepay the home loan or invest the surplus?"* and the honest answer depends on your parents' retirement runway, your sibling's education timeline, and your own job stability, not just your balance sheet.
 
-| | A general chatbot | Family Financial Advisor |
-|---|---|---|
-| **Who it models** | One user, loosely remembered. | Every family member as a structured profile (income, age, risk appetite, goals) plus the household as a whole. You never re-explain everyone. |
-| **The math it does** | A generic calculator tool for arithmetic. | Purpose-built financial models: Monte Carlo retirement simulations, goal-probability analysis, age-based allocation glide paths. |
-| **How it learns your risk** | Asks you, and takes "aggressive" at face value. | Reads how you actually react to situations, because what people say and what they can stomach are different things. |
-| **Its goal** | Answer the question, sometimes by naming a fund or stock. | Teach you the tradeoff so you can decide, and recommend categories ("a short-term debt fund"), never specific products. |
-| **Where it lives** | A company's servers; your data may train future models. | Plain markdown files on your disk. Read, edit, back up, or delete everything it knows. |
+Saarthi knows every family member as a distinct person, explains its reasoning so you understand each decision yourself, and is built to make you more financially literate. You talk to it like a family friend who happens to be a great advisor, and every conversation makes it understand your family a little better. The advice compounds.
+
+It runs on your own machine. Your financial data never leaves it.
+
+*(Saarthi is Sanskrit for the charioteer who counsels the warrior: it steers and advises, but you hold the reins.)*
 
 ---
 
 ## See it in action
 
-### The maturing FD
+**The maturing FD**
 
 > **You:** "Mom's ₹5L fixed deposit matures next month. Where should she park it?"
 
-A generic chatbot gives a generic answer about debt funds. This advisor already knows Mom is 58, retiring in four years, that the family emergency fund is thin, and that she's uneasy with volatility. So instead of a product tip, it walks you through the decision:
+Saarthi already knows Mom is 58, retiring in four years, that the family emergency fund is thin, and that she is uneasy with volatility, so instead of a product tip it walks you through the decision:
 
-> "Mom is four years from retirement, so this money has a short horizon and shouldn't take equity risk. Her emergency fund covers about two months of expenses, below the six you'd want at her age. **Top up the buffer first, then ladder the rest in a short-term debt fund.** An FD at ~7% barely beats inflation after tax, while a debt fund of similar safety has historically returned a little more and is more tax-efficient past three years."
+> "Mom is four years from retirement, so this money has a short horizon and should not take equity risk. Her emergency fund covers about two months of expenses, below the six you would want at her age. **Top up the buffer first, then ladder the rest in a short-term debt fund.** An FD barely beats inflation after tax; a debt fund of similar safety is more tax-efficient past three years."
 
-You don't just get an answer. You learn *why short horizon means low risk* and *why the emergency fund comes first*. Next time, you'll reason it out yourself.
+You do not just get an answer. You learn *why short horizon means low risk* and *why the emergency fund comes first*. Next time, you reason it out yourself.
 
-### Prepay the loan or invest?
+**Prepay the loan or invest?**
 
-> **You:** "I have ₹2L spare. Should I prepay my home loan or top up my SIP?"
+> **You:** "I have ₹2L spare. Prepay my home loan or top up my SIP?"
 
-It pulls your loan rate, your SIP, *and* the fact that your parents have no pension and you're their primary support:
+It pulls your loan rate, your SIP, *and* the fact that you are your parents' primary support on a single income:
 
-> "On paper, your loan is at 8.4% and your SIP has averaged more, so investing wins. But you're the backstop for your parents on a single income. **Prepaying is a guaranteed 8.4%; the market's higher number is not guaranteed.** Given how much rides on you, I'd split it: prepay half to cut your fixed obligations, invest half to keep growth going."
+> "On paper your loan is 8.4% and your SIP has averaged more, so investing wins. But you are the backstop for your parents. **Prepaying is a guaranteed 8.4%; the market's higher number is not guaranteed.** Given how much rides on you, I would split it: prepay half to cut fixed obligations, invest half to keep growth going."
 
 It teaches the concept (guaranteed vs expected return) and grounds it in *your* family's risk, not a textbook.
 
-### A first salary
+**A first job**
 
-> **Your daughter:** "I just got my first job. Everyone says start an SIP. What even is that?"
+> **Your sister:** "I just got my first job. Everyone says start an SIP. What even is that?"
 
-Here it's a patient teacher, not an advisor talking over a beginner's head:
+Here it is a patient teacher, not an advisor talking over a beginner's head:
 
-> "An SIP just means investing a fixed amount every month, automatically, instead of one lump sum. It forces consistency and smooths out market ups and downs. But two things come first: a small emergency fund, and clearing any high-interest debt. Want to work out how much you could comfortably set aside each month?"
+> "An SIP just means investing a fixed amount every month, automatically, instead of one lump sum. It forces consistency and smooths out the ups and downs. But two things come first: a small emergency fund, and clearing any high-interest debt. Want to work out how much you could comfortably set aside?"
 
-One advisor, shared by the whole family, meeting each person at their level.
-
----
-
-## More than a question box
-
-This is meant to be a relationship, not a transaction. Most tools, and most chatbots, wipe the slate after every answer. This one grows with your family.
-
-- **It remembers the arc, not just the message.** It knows you prepaid part of your loan in March, that your daughter started her first SIP, that Mom's FD is maturing again. Each conversation builds on the last.
-- **It checks in on its own.** Every quarter (or twice a year, your call) it runs a review: are the goals on track, did the SIPs actually happen, has anything drifted from the plan? Then it tells the family what needs attention, instead of waiting to be asked.
-- **It gets better the more you use it.** Six months in, it understands your family's real tradeoffs better than any one-off question could.
+One guide, shared by the whole family, meeting each person at their level.
 
 ---
 
-## Built for how families actually talk
+## What makes it different
 
-It's conversation-first by design. No dashboard to learn, no forms to fill, you just talk. And because the goal is to reach *every* member of a family, including the ones who would never open a finance app, it's built to live where families already are: **WhatsApp.** A parent who finds apps intimidating can simply send a message and get a thoughtful, personal answer back.
-
----
-
-## Risk you'll actually stick to
-
-Ask someone their risk appetite and almost everyone says "aggressive". Then the market drops 5% in a single day, they panic, and sell at the bottom. Self-reported risk tolerance is one of the least reliable numbers in personal finance.
-
-So this advisor doesn't just ask. It gauges your real appetite **situationally**, from how you react to scenarios and to actual market moves, and builds a truer picture of what you can genuinely live with. The plan it gives you is one you'll still be comfortable with when markets get rough, not just on the day you answered a questionnaire.
+|  | A general chatbot | Saarthi |
+|---|---|---|
+| **Who it models** | One user, loosely remembered. | Every family member as a structured profile (income, age, risk, goals) plus the household as a whole. You never re-explain everyone. |
+| **How it learns your risk** | Asks you, and takes "aggressive" at face value. | Reads how you actually react to scenarios and market moves, because what people say and what they can stomach differ. |
+| **Its goal** | Answer the question, sometimes by naming a fund. | Teach you the tradeoff so you can decide; recommends categories ("a short-term debt fund"), never specific products. |
+| **Where it lives** | A company's servers; your data may train future models. | Plain markdown files on your disk. Read, edit, back up, or delete everything it knows. |
 
 ---
 
-## We teach, we don't sell
+## What works today
 
-This is the core philosophy, and it shapes every other decision in the product.
+- **Per-member memory.** Each family member is modeled separately, and cross-member privacy is enforced in the writer layer at the code level, not as a polite instruction to the model.
+- **Memory you can read with your own eyes.** Everything it knows lives in plain markdown on your disk. No database, no vector store. It loads memory in tiers the way a person recalls things: facts always in mind, details pulled up when relevant, things looked up mid-thought.
+- **Conversation-first chat.** Streaming replies in a texting-style interface, per-member voice, swipe-to-reply, and a stop button mid-thought. No dashboard to learn, no forms.
+- **Onboarding that does not feel like paperwork.** A short wizard seeds who is who, the rough money picture, goals, and a situational risk read, mostly taps, not typing.
+- **Memory updates itself from conversation.** After a session, a background pass reads the transcript and quietly updates goals, life events, and the status of old recommendations. You just talk.
+- **Durable by design.** Sessions are summarized on idle or restart, and an in-progress chat survives a backend restart.
+- **A weekly review ritual.** Every turn is logged with what the agent knew, what it spent, and how it behaved, so you can audit a week of conversations and catch anything off.
 
-Most finance apps make money when you buy something, so they're built to recommend products. This one has a different goal: **leave you understanding your own money well enough to decide for yourself.**
+## Roadmap
 
-- **It explains the "why" behind every suggestion.** Not "buy this", but "here's the tradeoff, here's how to think about it, here's what I'd lean toward and the assumption it rests on."
-- **It recommends categories, never specific products.** "A large-cap index fund", not "the XYZ Bluechip Fund". You learn what kind of instrument fits, then choose the specific one yourself or with a registered advisor.
-- **It teaches concepts as they come up.** What an emergency fund is for, why horizon drives risk, how compounding actually works. The conversation doubles as a financial education.
-- **It says "I don't know" honestly.** On HUF/NRI taxation, estate planning, and market timing, it defers to a CA, RIA, or lawyer instead of bluffing.
+*(In-README for now; this moves to the issue tracker once the project is public.)*
 
-By staying at the level of categories and frameworks, the product also sits outside SEBI's definition of "investment advice". But that's a consequence of the philosophy, not the reason for it.
+- **Purpose-built modeling:** Monte Carlo retirement simulations, goal-probability analysis, age-based allocation glide paths.
+- **WhatsApp channel,** so the family members who would never open a finance app can just send a message.
+- **Anonymiser,** to strip names, account numbers, and PAN from prompts before any model call.
+- **Family dashboard** and **brokerage sync** (CAS upload, Account Aggregator, Kite MCP).
 
 ---
 
 ## How it works under the hood
 
-### The family is the unit, not the individual
+```text
+        you ask a question
+               │
+               ▼
+     ┌─────────────────────┐
+     │  Classifier (Haiku) │   picks what to recall
+     └──────────┬──────────┘
+                ▼
+     ┌─────────────────────┐
+     │  Assembler (Python) │   reads memory, builds the prompt
+     └──────────┬──────────┘
+                ▼
+     ┌─────────────────────┐
+     │ Main agent (Sonnet) │   streams the reply, looks things
+     └──────────┬──────────┘   up mid-thought (read_context)
+                ▼
+       texting-style bubbles  ──▶  you
+                │
+          (session ends)
+                ▼
+     ┌─────────────────────┐
+     │     Summariser      │   writes new facts back to memory
+     └─────────────────────┘
 
-Every Indian finance app (Zerodha, Groww, INDmoney, Kuvera) gives *you* a dashboard. This treats your family as one financial entity with multiple members, so it can answer *"can Mom afford to retire in three years?"* by looking at her portfolio, the household emergency fund, your contribution capacity, and Dad's pension, all at once.
+     ┌──────────────────────────────────────────────────────┐
+     │  Memory · plain markdown, one file per family member  │
+     │  read on the way in, updated on the way out           │
+     └──────────────────────────────────────────────────────┘
 
-### Memory you can read with your own eyes
-
-Everything the advisor knows lives in plain markdown files on your disk. No database, no cloud, no vector store. Open them in any text editor, see exactly what it believes about your family, and fix anything that's wrong. It loads that memory in tiers, the way a person recalls things: facts it always keeps in mind, details it pulls up when relevant, and things it looks up mid-thought. Fast replies, without stuffing every fact into every prompt.
-
-### Purpose-built financial modeling
-
-Generic chatbots can call a calculator now, so basic arithmetic isn't the edge. The edge is the *kind* of math: real financial modeling. Monte Carlo simulations that test whether a retirement corpus survives thousands of market paths, goal-probability analysis, allocation glide paths by age and horizon. The model reasons about your situation; proven algorithms produce numbers you can plan around.
-
-### Privacy enforced in code, not by request
-
-When Mom uses the app, her conversation stays hers. The family head sees a *summary*, not her transcript. If her session ever tries to write into Dad's private memory, the writer layer rejects it at the code level, not as a polite instruction to the AI. An anonymiser that strips names, PAN, account numbers, and bank names from prompts before they leave your machine is planned — it ships last in the MVP, once the core loop is stable.
-
-### Memory updates itself from conversation
-
-After a session ends, a small background process reads the transcript and quietly updates memory: new goals you mentioned in passing, life events, status changes on old recommendations. You never fill out a form. You just talk.
-
----
-
-## Status
-
-**Pre-MVP, in active development.** Being built in five working days.
-
-| Day | What ships | Status |
-|---|---|---|
-| 1 | Backend streaming pipeline, memory loading, first real Claude reply | Done |
-| 2 | React chat UI, per-member switching, transcript persistence | Done |
-| 3 | Intent classifier, intent-gated memory, session summariser, writer privacy layer | In progress |
-| 4 | Math tool-use loop, response guardrails, family dashboard | Planned |
-| 5 | Onboarding wizard, conversation recall, real-family dogfooding | Planned |
-
-See `MVP_BUILD_PLAN.md` for the full day-by-day plan and `agentic_workflow.md` for the technical architecture.
-
----
-
-## Architecture at a glance
-
+     all of this runs on your machine. nothing leaves it.
 ```
-You type a message
-        |
-[Classifier - Haiku 4.5]      ~300ms   decides what memory to load
-        |
-[Assembler - pure Python]      ~50ms   builds the prompt from markdown files
-        |
-[Anonymiser — planned]          ~1ms   strips PAN, account numbers, names
-        |
-[Main agent - Sonnet 4.6]      3-8s    streams the reply, calls modeling tools
-        |
-[Guardrails — planned]                  strips product names, hedges certainty
-        |
-You see the reply (streaming, token by token)
-        |
-[Session ends -> Summariser]   ~2s     updates memory files atomically
-```
+
+**The family is the unit, not the individual.** Most finance apps give *you* a dashboard. Saarthi treats your family as one entity with multiple members, so it can answer *"can Mom afford to retire in three years?"* using her portfolio, the household emergency fund, your contribution capacity, and Dad's pension, all at once.
+
+**Privacy enforced in code, not by request.** When Mom uses it, her conversation stays hers; the family head sees a *summary*, not her transcript. If her session ever tries to write into Dad's private memory, the writer layer rejects it at the code level.
+
+**We teach, we do not sell.** It explains the "why" behind every suggestion, recommends categories rather than named products, teaches concepts as they come up, and says "I don't know" honestly on things like estate planning or market timing, deferring to a qualified professional. Staying at the level of categories and frameworks also keeps it outside the regulatory definition of "investment advice", but that is a consequence of the philosophy, not the reason for it.
 
 No vector database. No RAG. No knowledge graph. No SQLite. Just markdown files, a fast classifier, and a careful agent.
 
@@ -169,87 +154,59 @@ No vector database. No RAG. No knowledge graph. No SQLite. Just markdown files, 
 |---|---|
 | Language | Python 3.12+ |
 | Backend | FastAPI + uvicorn (SSE streaming) |
-| Main model | Claude Sonnet 4.6 |
-| Classifier + summariser | Claude Haiku 4.5 |
+| Main model | Claude Sonnet |
+| Classifier + summariser | Claude Haiku |
 | Storage | Plain markdown + JSONL files |
 | Frontend | React + Vite + Tailwind v4 + Zustand |
 | Scheduler | APScheduler |
-| Channels | Web chat now, WhatsApp planned |
-| Brokerage data (planned) | Kite MCP (Zerodha) |
 
-What's deliberately *not* in the stack: no database (markdown scans are fast at single-family scale), no vector store (the whole corpus is under 30K tokens), no LangChain (the direct SDK is cleaner), no Redis (single machine).
+Deliberately *not* in the stack: no database (markdown scans are fast at single-family scale), no vector store (the whole corpus is small), no LangChain (the direct SDK is cleaner), no Redis.
 
 ---
 
-## Privacy & regulatory positioning
+## Run it
 
-- **Local-first:** all financial data, memory, and chat history stay on your machine.
-- **Anonymisation before any LLM call (planned, ships last in the MVP):** names will become "Member A/B/C"; account numbers, PAN, Aadhaar, and phone numbers stripped; bank and broker names replaced with generic terms. Until it ships, prompts contain member names and figures as stored in memory.
-- **Category-only recommendations:** the advisor suggests *"a large-cap index fund"*, never a named product. This keeps it outside SEBI's definition of "investment advice".
-- **Honest "I don't know":** on HUF/NRI taxation, estate planning, specific product comparisons, and market timing, it defers to a qualified professional.
-- **No marketing data, no analytics, no telemetry.**
-
----
-
-## Roadmap (post-MVP)
-
-- **Phase 2, data & channels:** WhatsApp interface, multi-brokerage support (Groww), CAS statement upload, Account Aggregator integration.
-- **Phase 3, deeper intelligence:** more skill playbooks (retirement, education funding, tax optimisation), advanced calculators (Monte Carlo, retirement corpus), conflicting-goal detection, a memory-editing UI.
-- **Phase 4, scale:** optional cloud deployment, proper auth, mobile app, quarterly PDF reports.
-- **Phase 5, platform:** the underlying architecture (family context + multi-persona memory + skill-driven agent) could generalise to other life domains, but only if it proves itself in finance first.
-
----
-
-## Installation
-
-The whole stack (backend + frontend) runs in Docker, so the only prerequisite is **Docker Desktop** (or Docker Engine + Compose v2).
+The whole stack runs in Docker, so the only prerequisite is **Docker Desktop** (or Docker Engine + Compose v2).
 
 ```bash
-# 1. Clone, then add your Anthropic key
+# 1: Clone, then add your Anthropic key
 cp .env.example .env
-#    edit .env and set ANTHROPIC_API_KEY=sk-ant-...
+#     edit .env and set ANTHROPIC_API_KEY=sk-ant-...
 
-# 2. Build and run both services
+# 2: Build and run both services
 docker compose up --build
 
-# 3. Open the app
-#    frontend → http://localhost:5173
-#    backend  → http://localhost:8000  (health: /health)
+# 3: Open the app
+#     frontend → http://localhost:5173
+#     backend  → http://localhost:8000  (health: /health)
 ```
 
-That's it. Stop with `Ctrl+C`, or run detached with `docker compose up -d` and stop with `docker compose down`.
+Stop with `Ctrl+C`, or run detached with `docker compose up -d` and stop with `docker compose down`.
 
-**What you get:**
+- **Hot reload.** Source is bind-mounted: edit a `.py` in `backend/` or a `.jsx` in `frontend/src/` and it reloads live.
+- **Readable data on disk.** `memory/`, `sessions/`, and `skills/` are mounted from the host, so the markdown files stay on your machine and open in any editor.
+- **Your key stays out of the image.** `ANTHROPIC_API_KEY` is injected at runtime from `.env` (gitignored), never baked into an image.
 
-- **Hot reload.** Source is bind-mounted — edit a `.py` in `backend/` or a `.jsx` in `frontend/src/` and the change reloads live, no rebuild needed.
-- **Readable data on disk.** `memory/`, `sessions/`, and `skills/` are mounted from the host, so the markdown files the advisor reads and writes stay on your machine and open in any editor.
-- **Your key stays out of the image.** `ANTHROPIC_API_KEY` is injected at runtime from `.env`; it is never baked into a built image, and `.env` is gitignored.
-
-**Notes for contributors:**
-
-- If you're already running a local Vite (`:5173`) or backend (`:8000`) outside Docker, those ports will be taken. Stop the local servers, or remap the host ports — e.g. create a `docker-compose.override.yml`:
-  ```yaml
-  services:
-    backend:
-      ports: !override ["8001:8000"]
-    frontend:
-      ports: !override ["5174:5173"]
-  ```
-- After changing `requirements.txt` or `frontend/package.json`, rebuild with `docker compose up --build` so the dependency layer is refreshed.
-- Prefer running without Docker? You can still `pip install -r requirements.txt` + `uvicorn backend.main:app --reload` and `cd frontend && npm install && npm run dev` — the Vite proxy defaults to `http://localhost:8000`.
+Prefer no Docker? `pip install -r requirements.txt` + `uvicorn backend.main:app --reload`, and `cd frontend && npm install && npm run dev`.
 
 ---
 
-## Project documents
+## The whole family, on one machine
 
-- `Family_Financial_Advisor_PRD.md`: the full product requirements doc, including memory schemas, the agent pipeline, and the design-decisions log.
-- `PRD_Summary.md`: a shorter technical summary for stakeholders.
-- `agentic_workflow.md`: the per-turn flow, prompt-caching strategy, and design principles.
-- `MVP_BUILD_PLAN.md`: the five-day build plan.
-- `.claude/day1_milestones.md`, `day2_milestones.md`, `day3_milestones.md`: milestone-level breakdowns of each day's work.
+Saarthi runs on a single machine in your home, but everyone can use it. Start it on your laptop, and anyone on the same Wi-Fi can open it from their own phone at your machine's address on the network (something like `http://192.168.1.42:5173`). The dev server already listens on your local network, so there is nothing extra to set up.
+
+Each person taps who they are and talks to Saarthi in their own voice, with their own private memory. The traffic stays on your home network, and nothing is sent to the cloud.
 
 ---
 
-## License & status
+## Project docs
 
-Pre-release. Not yet open-sourced. Not affiliated with SEBI, IRDAI, or any registered investment advisor. This is an educational and decision-support tool, not investment advice. For complex tax, estate, or NRI situations, consult a SEBI-registered investment advisor or a qualified chartered accountant.
+- `docs/MEMORY_DATA_MODEL.md`, the memory schema: per-member files, update modes, provenance, and privacy rules.
+- `docs/ONBOARDING_PLAN.md`, how onboarding seeds memory.
+- `frontend/PRODUCT.md` / `frontend/DESIGN.md`, product voice and design principles.
+
+---
+
+## Status & license
+
+Personal project in active development; not yet open-sourced. Not affiliated with any regulator or registered investment advisor. This is an educational and decision-support tool, not investment advice. For complex tax, estate, or cross-border situations, consult a qualified professional.
