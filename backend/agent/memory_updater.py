@@ -116,8 +116,8 @@ INSTRUCTIONS
 8. You may be shown the member's EXISTING MEMORY. When a financial fact or asset you report is a CHANGE to one already there, set its `target_id` to that block's id (from its `<!-- id:... -->` marker) so it updates in place instead of creating a duplicate. Match by MEANING, not exact label — "personal spending" and an existing "total expense" are the same fact, so target it. Omit `target_id` only for a genuinely new fact.
 
 DO
-- financial_fact_updates: RECURRING income, expense, or liability the member states — a monthly/annual salary, an ongoing recurring expense, a standing liability. Give category, a short label in their own words, the amount, and cadence (monthly or annual). This file is the recurring cash-flow picture, NOT a list of one-off transactions.
-- asset_updates: assets the member says they HOLD — cash/savings (e.g. an emergency fund), fixed deposits, EPF/PPF, gold, property, or a fund/investment balance. Give the asset class, a short label in their own words, and the value as stated.
+- financial_fact_updates: RECURRING income, expense, liability, or investment contribution the member states — a monthly/annual salary, an ongoing recurring expense, a standing liability, or a regular contribution into ANY instrument (a SIP, recurring deposit, or standing buy into a fund, stock, or smallcase). Give category (income | expense | liability | investment), a short label in their own words, the amount per period, and cadence (monthly or annual). This file is the recurring cash-flow picture, NOT a list of one-off transactions.
+- asset_updates: the current VALUE of something the member says they HOLD — cash/savings (e.g. an emergency fund), a fixed deposit, EPF/PPF, gold, property, or the balance of a fund, stock, or smallcase. Give the asset class, a short label in their own words, and the value as a single amount they state (a balance, never a per-month contribution).
 - goal_updates: goals set, refined, completed, or cancelled — the action, plus target figure and horizon when stated.
 - inferences: behavioral signals the conversation reveals — risk tolerance and horizon (kind "risk"), or loss aversion, decision style, liquidity comfort, financial anxiety (kind "behavior") — each with its basis and an honest confidence.
 - cross_member_observations: anything the member says about ANOTHER person (e.g. "my dad is retiring next year") — the observation, who it is about, and the basis.
@@ -128,7 +128,7 @@ DO
 DON'T
 - Don't INVENT or estimate a figure the member did not give. Record an income, balance, or asset value only when the member states it; if they say something changed but give no number, report that it changed and omit the figure. A precise figure the member DOES state should be captured (a later upload supersedes it) — capturing a stated value is not "inventing".
 - Don't record a PREVIOUS or no-longer-true figure as a current fact. If the member contrasts an old value with a new one ("take-home is 1.4L now, up from 1.1"), report only the current one (1.4L); the old number is context, not a fact to store. A previous salary is never a current income.
-- Don't file a recurring INVESTMENT contribution as an expense. A monthly SIP, mutual-fund contribution, or money put into an investment is an asset_update (the holding it builds), not an expense. Rent, EMIs, bills, and family support are expenses.
+- Keep a recurring investment CONTRIBUTION separate from a holding's VALUE. A regular contribution into any instrument (a monthly SIP, a recurring deposit, a standing buy into a fund, stock, or smallcase) is a financial_fact_update with category "investment" and a cadence — it is the money flowing in, never an asset and never an expense. The current balance those contributions have built (a fund corpus, an FD, a stock or smallcase value) is the asset_update. Never record a contribution as an asset with a per-month value. Expenses are rent, EMIs, bills, and family support.
 - Don't put a ONE-OFF purchase, planned trip, or one-time windfall into financial_fact_updates or asset_updates — a single gadget, a vacation, an expected bonus or leave payout is not recurring cash flow and would sit in the finances file forever as if ongoing. Record it as a life_event instead.
 - Don't flip a behavioral read on a single offhand remark. Record an inference only when the conversation genuinely reveals it, and set confidence honestly: low for a passing hint, med for a clear signal, and high ONLY for a pattern that is explicitly stated or repeated across the conversation — never high on just one or two datapoints.
 - Don't write a fact about another person into this member's record — put it in cross_member_observations, never as this member's own fact.
@@ -143,6 +143,9 @@ Call: inferences=[{topic:"loss_aversion", kind:"behavior", claim:"strong loss av
 
 Input: "I remembered I also have about 2 lakh sitting in an FD, and roughly 50g of gold at home."
 Call: asset_updates=[{asset_class:"fd", label:"fixed deposit", value:"200000", basis:"~2L in an FD"}, {asset_class:"gold", label:"physical gold", value:"50g", basis:"~50g gold at home"}]; summary_3_lines=["Disclosed previously-unmentioned assets","~Rs 2L in a fixed deposit","~50g physical gold at home"].
+
+Input: "I run a couple of SIPs - 4k a month into HDFC Small Cap and 5k into a Nifty index fund. Separately I've got about 30k in direct stocks."
+Call: financial_fact_updates=[{category:"investment", label:"HDFC Small Cap SIP", value:"4000", cadence:"monthly", basis:"4k/month SIP"}, {category:"investment", label:"Nifty index SIP", value:"5000", cadence:"monthly", basis:"5k/month into a Nifty index fund"}]; asset_updates=[{asset_class:"equity", label:"direct stocks", value:"30000", basis:"~30k in direct stocks"}]; summary_3_lines=["Runs monthly SIPs into a small-cap and an index fund","Holds ~Rs 30k in direct stocks","Recurring equity contributions in place"]. The SIPs are recurring contributions (investment cash flow); the 30k stock balance is a held asset.
 
 CONTEXT
 This runs once, automatically, when a session closes. You are extracting for one member's record only. Downstream, a deterministic reconciler files each item by its destination's rule and tags it source=conversation with the confidence you set; a low-confidence conversational value never overwrites a verified document, and a repeated behavioral signal accrues as evidence rather than replacing the prior read. Your honesty about basis and confidence is what decides whether a value is trusted, accrued, or held for confirmation."""
@@ -194,7 +197,7 @@ _SUMMARIZE_TOOL = {
                     "properties": {
                         "category": {
                             "type": "string",
-                            "enum": ["income", "expense", "liability"],
+                            "enum": ["income", "expense", "liability", "investment"],
                         },
                         "label": {"type": "string"},
                         "value": {"type": "string"},

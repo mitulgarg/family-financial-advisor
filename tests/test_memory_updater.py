@@ -46,6 +46,48 @@ def test_summarizer_prompt_demands_tool_call():
     assert "always call the `summarize` tool" in sys
 
 
+def test_investment_is_a_financial_fact_category():
+    # Recurring investment contributions (a SIP, RD, or regular buy into ANY
+    # instrument) are recurring cash flows, so the financial-fact category enum
+    # must offer "investment". They must never be filed as held assets/holdings.
+    cat_enum = memory_updater._SUMMARIZE_TOOL["input_schema"]["properties"][
+        "financial_fact_updates"]["items"]["properties"]["category"]["enum"]
+    assert "investment" in cat_enum
+
+
+def test_prompt_routes_recurring_investment_to_finances_not_assets():
+    sys = memory_updater._SUMMARIZER_SYSTEM.lower()
+    # The corrected rule: a recurring contribution is a financial fact with
+    # category "investment" + a cadence, not a holding.
+    assert 'category "investment"' in sys
+    # The old bug routed recurring SIPs to asset_updates as "the holding it
+    # builds" with a per-month value; that instruction must be gone.
+    assert "the holding it builds" not in sys
+
+
+async def test_recurring_investment_routed_to_finances_not_portfolio(
+    tmp_memory, fake_provider
+):
+    fake_provider.payload = {
+        "summary_3_lines": ["sip"],
+        "financial_fact_updates": [
+            {"category": "investment", "label": "hdfc small cap sip", "value": "4000",
+             "cadence": "monthly", "basis": "4k/month SIP into HDFC small cap"}
+        ],
+    }
+    memory_updater._provider = fake_provider
+    _write_transcript("vedant", "inv1")
+
+    await close_session("vedant", "inv1")
+
+    fin = (tmp_memory / "members" / "vedant" / "finances.md").read_text()
+    assert "## investment.hdfc small cap sip" in fin
+    assert "- value: 4000" in fin
+    assert "- category: investment" in fin
+    # A recurring contribution is a cash flow, never a held asset.
+    assert not (tmp_memory / "members" / "vedant" / "portfolio_summary.md").exists()
+
+
 async def test_member_notes_reach_extractor(tmp_memory, fake_provider):
     # The narrative onboarding note must reach the extractor too, not just the
     # live agent — otherwise extraction repeats mistakes the note would prevent

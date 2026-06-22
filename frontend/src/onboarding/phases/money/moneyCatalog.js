@@ -10,6 +10,7 @@ import {
   HandCoins,
   House,
   Laptop,
+  Lock,
   TrendUp,
   Vault,
   Wallet,
@@ -35,7 +36,8 @@ export const LOAN_TYPES = [
 ]
 
 export const ASSET_CLASSES = [
-  { key: 'bank-fd', label: 'Bank savings & FDs', Icon: Bank, defaultAmount: 200000 },
+  { key: 'cash', label: 'Bank balance & savings', Icon: Bank, defaultAmount: 200000 },
+  { key: 'fd', label: 'Fixed deposits', Icon: Lock, defaultAmount: 200000 },
   { key: 'mf-sip', label: 'Mutual funds & SIPs', Icon: ChartLineUp, defaultAmount: 300000 },
   { key: 'stocks', label: 'Stocks', Icon: TrendUp, defaultAmount: 100000 },
   { key: 'gold', label: 'Gold', Icon: Diamond, defaultAmount: 200000 },

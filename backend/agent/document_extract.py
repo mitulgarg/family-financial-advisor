@@ -31,7 +31,7 @@ ALLOWED_EXTENSIONS = (_CSV_EXT, _XLSX_EXT, _PDF_EXT)
 # The asset-class keys the savings screen knows (frontend moneyCatalog
 # ASSET_CLASSES), plus "other" for anything that does not fit. The model must
 # pick from these so extracted rows drop straight into the existing asset rows.
-ASSET_CLASS_KEYS = ("bank-fd", "mf-sip", "stocks", "gold", "property", "pf", "other")
+ASSET_CLASS_KEYS = ("cash", "fd", "mf-sip", "stocks", "gold", "property", "pf", "other")
 
 # Document kinds. The grouping pass uses these to reason about overlaps: a CAS is
 # consolidated, so its funds overlap with any AMC/demat statement of the same funds.
@@ -164,7 +164,7 @@ _SYSTEM = (
     "You read a financial document a family uploaded and extract ONLY their "
     "investment holdings and the current value of each. Examples of holdings: "
     "mutual fund folios, stocks/shares, fixed deposits, gold, property, "
-    "provident fund. Classify each into one of: bank-fd, mf-sip, stocks, gold, "
+    "provident fund. Classify each into one of: cash, fd, mf-sip, stocks, gold, "
     "property, pf, other. All values are in Indian rupees — report a plain "
     "number with no symbols or commas. Keep each holding's name SHORT (2-4 "
     "words): the fund house and scheme or the company, e.g. 'HDFC Flexi Cap' "
